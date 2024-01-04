@@ -23,6 +23,9 @@ JTFRAME_PROM_START=0x140000
 # DIP base is less than 13
 JTFRAME_OSD_NOCREDITS
 
+[demist_deca|demist_de10lite|demist_zx3a35|demist_zx3a100|demist_zx3a200]
+JTFRAME_DIPBASE=8
+
 [mister]
 JTFRAME_ARX=4
 JTFRAME_ARY=3
