@@ -16,6 +16,8 @@
     Version: 1.0
     Date: 22-2-2019 */
 
+// This is the NeptUNO top level
+
 `ifdef MCP
     `define MC2_PINS
 `endif
@@ -29,8 +31,6 @@
         `define NEPTUNO_PINS
     `endif
 `endif
-
-//`default_nettype none
 
 module neptuno_top(
     input           CLK50,
@@ -51,11 +51,18 @@ module neptuno_top(
     output [1:0]    SDRAM_BA,       // SDRAM Bank Address
     inout           SDRAM_CLK,      // SDRAM Clock
     output          SDRAM_CKE,      // SDRAM Clock Enable
-   // SPI interface to arm io controller
+    // SPI interface to arm io controller
     inout           SPI_DO,
     input           SPI_DI,
     input           SPI_SCK,
     input           SPI_SS2,
+    //input           SPI_SS3,
+    //input           SPI_SS4,
+    //input           CONF_DATA0,
+    // UART pins -MIDI extension
+    // UART
+    //input           UART_RX,
+    //output          UART_TX,
     // sound
     output          AUDIO_L,
     output          AUDIO_R,
@@ -128,7 +135,8 @@ module neptuno_top(
     ,output         sim_pxl_cen,
     output          sim_pxl_clk,
     output          sim_vb,
-    output          sim_hb
+    output          sim_hb,
+    output          sim_dwnld_busy
 `endif
 );
 
@@ -175,15 +183,14 @@ module neptuno_top(
     localparam SDRAMW=22; // 32 MB
 `endif
 
-wire          rst, rst_n, clk_sys, clk_rom, clk6, clk24, clk48, clk96;
-wire [63:0]   status;
-wire [31:0]   joystick1, joystick2;
-wire [24:0]   ioctl_addr;
-wire [ 7:0]   ioctl_dout;
-wire [ 7:0]   ioctl_din;
-wire          ioctl_wr;
-wire          ioctl_ram;
-wire [ 1:0]   dial_x, dial_y;
+wire        rst, rst_n, clk_sys, clk_rom, clk6, clk24, clk48, clk96;
+wire [63:0] status;
+wire [31:0] joystick1, joystick2;
+wire [25:0] ioctl_addr;
+wire [ 7:0] ioctl_dout, ioctl_din;
+wire        ioctl_wr;
+wire        ioctl_ram;
+wire [ 1:0] dial_x, dial_y;
 
 wire [15:0] joyana_l1, joyana_l2, joyana_l3, joyana_l4,
             joyana_r1, joyana_r2, joyana_r3, joyana_r4;
@@ -191,7 +198,7 @@ wire [15:0] joyana_l1, joyana_l2, joyana_l3, joyana_l4,
 wire rst_req   = status[0];
 
 // ROM download
-wire          downloading, dwnld_busy;
+wire          ioctl_rom, ioctl_cart, dwnld_busy;
 
 wire [SDRAMW-1:0] prog_addr;
 wire [15:0]   prog_data;
@@ -200,8 +207,6 @@ wire [ 7:0]   prog_data8;
 `endif
 wire [ 1:0]   prog_mask, prog_ba;
 wire          prog_we, prog_rd, prog_rdy, prog_ack, prog_dst, prog_dok;
-wire [ 7:0]   st_addr, st_dout;
-wire [ 7:0]   paddle_1, paddle_2, paddle_3, paddle_4;
 
 // ROM access from game
 wire [SDRAMW-1:0] ba0_addr, ba1_addr, ba2_addr, ba3_addr;
@@ -228,7 +233,6 @@ wire LHBL, LVBL, hs, vs;
 wire [15:0] snd_left, snd_right;
 wire        sample;
 
-
 wire [9:0] game_joy1, game_joy2, game_joy3, game_joy4;
 wire [3:0] game_coin, game_start;
 wire       game_rst, game_service, game_tilt;
@@ -240,8 +244,9 @@ wire data_rdy, sdram_ack;
 // PLL's
 wire pll_locked, clk_pico;
 
+
 `ifndef JTFRAME_STEREO
-assign snd_right = snd_left;
+    assign snd_right = snd_left;
 `endif
 
 //joysticks
@@ -274,6 +279,24 @@ wire [5:0] joy2_bus;
     assign joy2_bus = JOY2;
 `endif
 
+`ifndef JTFRAME_SDRAM_BANKS
+    assign prog_data = {2{prog_data8}};
+    assign ba_rd[3:1] = 0;
+    assign ba_wr      = 0;
+    assign prog_ba    = 0;
+    // tie down unused bank signals
+    assign ba1_addr   = 0;
+    assign ba2_addr   = 0;
+    assign ba3_addr   = 0;
+    assign ba0_din    = 0;
+    assign ba0_dsn    = 3;
+    assign ba1_din    = 0;
+    assign ba1_dsn    = 3;
+    assign ba2_din    = 0;
+    assign ba2_dsn    = 3;
+    assign ba3_din    = 0;
+    assign ba3_dsn    = 3;
+`endif
 
 jtframe_mist_clocks u_clocks(
     .clk_ext    ( CLK50          ),    // 27MHz for MiST, 50MHz for Neptuno
@@ -300,13 +323,15 @@ jtframe_mist_clocks u_clocks(
 
 assign clk_pico = clk48;
 
-
-wire [7:0] debug_bus, debug_view;
-wire [1:0] dip_fxlevel, game_led;
-wire       enable_fm, enable_psg;
-wire       dip_pause, dip_flip, dip_test;
-wire       pxl_cen, pxl2_cen;
-wire [31:0]dipsw;
+wire [ 7:0] debug_bus, debug_view;
+wire [ 1:0] dip_fxlevel, game_led;
+wire        enable_fm, enable_psg;
+wire        dip_pause, dip_flip, dip_test;
+wire        pxl_cen, pxl2_cen;
+wire [ 7:0] st_addr, st_dout;
+wire [ 7:0] paddle_1, paddle_2, paddle_3, paddle_4;
+wire [15:0] mouse_1p, mouse_2p;
+wire [31:0] dipsw;
 
 `ifdef JTFRAME_DIPBASE
 localparam DIPBASE=`JTFRAME_DIPBASE;
@@ -314,40 +339,16 @@ localparam DIPBASE=`JTFRAME_DIPBASE;
 localparam DIPBASE=16;
 `endif
 
-`ifndef JTFRAME_SDRAM_BANKS
-    assign prog_ba   = 2'd0;
-    // tie down unused bank signals
-    assign ba1_addr = 22'd0;
-    assign ba2_addr = 22'd0;
-    assign ba2_ack  = 0;
-    assign ba3_addr = 22'd0;
-    assign prog_data = {2{prog_data8}};
-    assign ba_rd[3:1] = 0;
-    assign ba_wr      = 0;
-    assign ba0_din    = 0;
-    assign ba0_dsn    = 3;
-    assign ba1_din    = 0;
-    assign ba1_dsn    = 3;
-    assign ba2_din    = 0;
-    assign ba2_dsn    = 3;
-    assign ba3_din    = 0;
-    assign ba3_dsn    = 3;
-`endif
-
 assign game_led[1] = 1'b0; // Let system LED info go through too
 
 jtframe_mist #(
     .SDRAMW       ( SDRAMW         ),
-    .SIGNED_SND   ( `JTFRAME_SIGNED_SND ),
-    .BUTTONS      ( `JTFRAME_BUTTONS    ),
+    .SIGNED_SND   ( `JTFRAME_SIGNED_SND    ),
+    .BUTTONS      ( `JTFRAME_BUTTONS  ),
     .DIPBASE      ( DIPBASE        ),
-    .COLORW       ( COLORW         )
-    `ifdef JTFRAME_WIDTH
-    ,.VIDEO_WIDTH ( `JTFRAME_WIDTH   )
-    `endif
-    `ifdef JTFRAME_HEIGHT
-    ,.VIDEO_HEIGHT( `JTFRAME_HEIGHT  )
-    `endif
+    .COLORW       ( COLORW         ),
+    .VIDEO_WIDTH  ( `JTFRAME_WIDTH ),
+    .VIDEO_HEIGHT ( `JTFRAME_HEIGHT)
 )
 u_frame(
     .clk_sys        ( clk_sys        ),
@@ -374,6 +375,14 @@ u_frame(
     .VGA_VS         ( VGA_VS         ),
     // LED
     .game_led       ( game_led       ),
+    // UART
+`ifndef JTFRAME_UART
+    //.uart_rx        ( UART_RX        ),
+    //.uart_tx        ( UART_TX        ),
+`else
+    .uart_rx        ( 1'b1           ),
+    .uart_tx        (                ),
+`endif
     // SDRAM interface
     .SDRAM_DQ       ( SDRAM_DQ       ),
     .SDRAM_A        ( SDRAM_A        ),
@@ -390,37 +399,20 @@ u_frame(
     .SPI_DI         ( SPI_DI         ),
     .SPI_SCK        ( SPI_SCK        ),
     .SPI_SS2        ( SPI_SS2        ),
-
-    .joy1_bus       ( joy1_bus       ),
-    .joy2_bus       ( joy2_bus       ),
-
-    .JOY_SELECT     ( JOY_SELECT     ),
-
-    .ps2_clk        ( PS2_CLK        ),
-    .ps2_dout       ( PS2_DATA       ),
-
-    .BUTTON_n       ( BUTTON_n       ),
+    //.SPI_SS3        ( SPI_SS3        ),
+    //.SPI_SS4        ( SPI_SS4        ),
+    //.CONF_DATA0     ( CONF_DATA0     ),
 
     // ROM access from game
-    // Bank 0: allows R/W
-    .ba0_addr   ( ba0_addr      ),
-    .ba1_addr   ( ba1_addr      ),
-    .ba2_addr   ( ba2_addr      ),
-    .ba3_addr   ( ba3_addr      ),
-    .ba_rd      ( ba_rd         ),
-    .ba_wr      ( ba_wr         ),
-    .ba_dst     ( ba_dst        ),
-    .ba_dok     ( ba_dok        ),
-    .ba_rdy     ( ba_rdy        ),
-    .ba_ack     ( ba_ack        ),
-    .ba0_din    ( ba0_din       ),
-    .ba0_dsn    ( ba0_dsn       ),
-    .ba1_din    ( ba1_din       ),
-    .ba1_dsn    ( ba1_dsn       ),
-    .ba2_din    ( ba2_din       ),
-    .ba2_dsn    ( ba2_dsn       ),
-    .ba3_din    ( ba3_din       ),
-    .ba3_dsn    ( ba3_dsn       ),
+    .ba0_addr   ( ba0_addr      ), .ba1_addr   ( ba1_addr      ),
+    .ba2_addr   ( ba2_addr      ), .ba3_addr   ( ba3_addr      ),
+    .ba_rd      ( ba_rd         ), .ba_wr      ( ba_wr         ),
+    .ba_dst     ( ba_dst        ), .ba_dok     ( ba_dok        ),
+    .ba_rdy     ( ba_rdy        ), .ba_ack     ( ba_ack        ),
+    .ba0_din    ( ba0_din       ), .ba0_dsn    ( ba0_dsn       ),
+    .ba1_din    ( ba1_din       ), .ba1_dsn    ( ba1_dsn       ),
+    .ba2_din    ( ba2_din       ), .ba2_dsn    ( ba2_dsn       ),
+    .ba3_din    ( ba3_din       ), .ba3_dsn    ( ba3_dsn       ),
 
     // ROM-load interface
     .prog_addr  ( prog_addr     ),
@@ -441,7 +433,8 @@ u_frame(
     .ioctl_wr       ( ioctl_wr       ),
     .ioctl_ram      ( ioctl_ram      ),
 
-    .downloading    ( downloading    ),
+    .ioctl_rom      ( ioctl_rom      ),
+    .ioctl_cart     ( ioctl_cart     ),
     .dwnld_busy     ( dwnld_busy     ),
 
     .sdram_dout     ( sdram_dout     ),
@@ -475,13 +468,25 @@ u_frame(
     .joyana_r2      ( joyana_r2      ),
     .joyana_r3      ( joyana_r3      ),
     .joyana_r4      ( joyana_r4      ),
+    // Paddle inputs
     .paddle_1       ( paddle_1       ),
     .paddle_2       ( paddle_2       ),
     .paddle_3       ( paddle_3       ),
     .paddle_4       ( paddle_4       ),
+    // Mouse inputs
+    .mouse_1p       ( mouse_1p       ),
+    .mouse_2p       ( mouse_2p       ),
+    .LED            ( LED            ),
+    // Dial emulation
     .dial_x         ( dial_x         ),
     .dial_y         ( dial_y         ),
-    .LED            ( LED            ),
+    // Unused in MiST
+    .BUTTON_n       ( BUTTON_n       ),
+    .ps2_clk        ( PS2_CLK        ),
+    .ps2_dout       ( PS2_DATA       ),
+    .joy1_bus       ( joy1_bus       ),
+    .joy2_bus       ( joy2_bus       ),
+    .JOY_SELECT     ( JOY_SELECT     ),
     // DIP and OSD settings
     .enable_fm      ( enable_fm      ),
     .enable_psg     ( enable_psg     ),
@@ -489,15 +494,21 @@ u_frame(
     .dip_pause      ( dip_pause      ),
     .dip_flip       ( dip_flip       ),
     .dip_fxlevel    ( dip_fxlevel    ),
-    // Debug
+    // status
     .st_addr        ( st_addr        ),
     .st_dout        ( st_dout        ),
+    // Debug
     .gfx_en         ( gfx_en         ),
     .debug_bus      ( debug_bus      ),
     .debug_view     ( debug_view     )
 );
 
 wire        game_tx, game_rx;
+
+`ifdef JTFRAME_UART
+//assign UART_TX = game_tx,
+//       game_rx = UART_RX;
+`endif
 
 `include "jtframe_game_instance.v"
 
