@@ -117,8 +117,10 @@ def extract_file_paths(file_path, base_path=None):
             content = f.readlines()
 
         # Buscamos rutas de archivos con los tipos VHDL_FILE, VERILOG_FILE, SYSTEMVERILOG_FILE, SDC_FILE y QIP_FILE
-        pattern = r'set_global_assignment\s+-name\s+(VHDL_FILE|VERILOG_FILE|QIP_FILE|SYSTEMVERILOG_FILE)\s+(.*?)$'
+        #pattern = r'set_global_assignment\s+-name\s+(VHDL_FILE|VERILOG_FILE|QIP_FILE|SYSTEMVERILOG_FILE)\s+(.*?)$'
         # pattern = r'set_global_assignment\s+-name\s+(VHDL_FILE|VERILOG_FILE|QIP_FILE|SYSTEMVERILOG_FILE|SDC_FILE)\s+(.*?)$'
+        pattern = r'set_global_assignment(?:\s+-\w+\s+\w+)*\s+-name\s+(VHDL_FILE|VERILOG_FILE|QIP_FILE|SYSTEMVERILOG_FILE)\s+(.*?)$'
+
         for line in content:
             line = line.replace("file join $::quartus(qip_path) ", "").strip()
             match = re.match(pattern, line)
@@ -167,7 +169,7 @@ def normalize_path(path, base_path):
     return path
 
 def write_file_paths_to_output(file_paths, output_path, target_fpga):
-    with open(output_path, 'w') as f:
+    with open(output_path, 'a') as f:
         f.write(f'# Create the project and directory structure\ncreate_project -force zxtres ./ -part {target_fpga}\n#\n# Add sources to the project\n')
         for path in file_paths:
             f.write(f"{path}\n")
@@ -216,6 +218,10 @@ def main():
     file_paths.append('set_property IS_GLOBAL_INCLUDE true [get_files ./defs.vh]')
     file_paths.append('set_property IS_GLOBAL_INCLUDE true [get_files ./build_id.vh]')
 
+    # Start Error catching block
+    with open(output_file, 'w') as f:
+        f.write(f'if {{[catch {{\n\n')
+            
     if file_paths:
         # Agregar todos los ficheros del proyecto al script TCL
         write_file_paths_to_output(file_paths, output_file, target_fpga)
@@ -295,14 +301,6 @@ def main():
         f.write("delete_runs \"impl_1\"\n")
         f.write("delete_runs \"synth_1\"\n")
 
-  #if {[catch {
-#    set FH [open $filename r]
-#    set content [read $FH]
-#    close $FH
-  #} errorstring]} {
-#    error " File $filename could not be opened : $errorstring "
-  #}
-
         if (create_A200T == 1 and run == 1):
             # Launch A200T runs
             f.write(f"if {{[catch {{\n")
@@ -311,10 +309,9 @@ def main():
             f.write(f"\nwait_on_run demist_zx3a200\n")
             f.write(f"\nputs \"Implementation ZXTRES A200T done!\"\n")
             f.write(f"}} errorstring]}} {{\n")
-            f.write("put \"Error while creating A200T version.\nExiting Vivado\"\n")
+            f.write("puts \"Error while creating A200T version.\nExiting Vivado\"\n")
             f.write(f"\nquit\n")
             f.write(f"}}\n")
-
 
         if (create_A100T == 1 and run == 1):
             # Launch A100T runs
@@ -324,7 +321,7 @@ def main():
             f.write(f"\nwait_on_run demist_zx3a100\n")
             f.write(f"\nputs \"Implementation ZXTRES A100T done!\"\n")
             f.write(f"}} errorstring]}} {{\n")
-            f.write("put \"Error while creating A100T version.\nExiting Vivado\"\n")
+            f.write("puts \"Error while creating A100T version.\nExiting Vivado\"\n")
             f.write(f"\nquit\n")
             f.write(f"}}\n")
 
@@ -336,7 +333,7 @@ def main():
             f.write(f"\nwait_on_run demist_zx3a35\n")
             f.write(f"\nputs \"Implementation ZXTRES A35T done!\"\n")
             f.write(f"}} errorstring]}} {{\n")
-            f.write("put \"Error while creating A35T version.\nExiting Vivado\"\n")
+            f.write("puts \"Error while creating A35T version.\nExiting Vivado\"\n")
             f.write(f"\nquit\n")
             f.write(f"}}\n")
 
@@ -345,6 +342,11 @@ def main():
         f.write(f"close_project\n")
         f.write(f"\nquit\n")
 
+        # End Error catching block
+        f.write(f'}} result]}} {{\n')
+        f.write(f'puts "Error while executing TCL script. Exiting Vivado"\n')
+        f.write(f"exit 1\n")
+        f.write(f'}}')
 
     crear_defs_vh()
     crear_build_id_vh()
@@ -355,6 +357,8 @@ def main():
     # print("==========================================================================================\n")
     
 # Start processing
+
 main()
 
-
+#    error " File $filename could not be opened : $errorstring "
+  #}
