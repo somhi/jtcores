@@ -72,11 +72,6 @@ wire          HB_negedge     = !HB &&  last_HB;
 wire          VB_posedge     =  VB && !last_VB;
 wire          VB_negedge     = !VB &&  last_VB;
 
-wire          HB_posedge     =  HB && !last_HB;
-wire          HB_negedge     = !HB &&  last_HB;
-wire          VB_posedge     =  VB && !last_VB;
-wire          VB_negedge     = !VB &&  last_VB;
-
 function [COLORW-1:0] ave(
         input [COLORW-1:0] a,
         input [COLORW-1:0] b );
