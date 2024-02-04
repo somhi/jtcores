@@ -16,13 +16,14 @@
     Version: 1.0
     Date: 22-9-2023 */
 
-/* verilator tracing_off */
 module jtshouse_cenloop(
     input             rst,
     input             clk,
     input      [ 2:0] busy,
 
-    output            cen_main, cen_sub, cen_snd, cen_mcu, cen_sndq,
+    output            cen_main, cen_sub, cen_mcu, cen_sndq,
+    output reg        snd_sel,
+    output reg        cen_snd,
 
     output     [15:0] fave, fworst // average cpu_cen frequency in kHz
 );
@@ -39,6 +40,7 @@ wire          over;
 wire [  CW:0] cencnt_nx;
 reg  [CW-1:0] cencnt=0;
 reg     [1:0] blank=0;
+reg           aux_snd, aux2;
 wire          bsyg = busy==0 || rst;
 
 assign over      = &blank && cencnt > DEN[CW-1:0]-{NUM[CW-2:0],1'b0};
@@ -47,10 +49,21 @@ assign cencnt_nx = {1'b0,cencnt}+NUM[CW:0] -
 
 assign cen_main = cpu_cen[0];
 assign cen_sub  = cpu_cen[1];
-assign cen_mcu  = |cpu_cen[2:0]; // should be just cpu_cen[2] but adjusting for lower mc6801 speed
-// assign cen_mcu  = cpu_cen[2]; // should be just cpu_cen[2] but adjusting for lower mc6801 speed
-assign cen_snd  = cpu_cen[3];
+assign cen_mcu  =|cpu_cen[3:0];
 assign cen_sndq = cpu_cen[1];
+
+always @(posedge clk) begin
+   {aux2,cen_snd,aux_snd} <= {cen_snd,aux_snd,cpu_cen[3]};
+    snd_sel <= cen_mcu & cen_sub;
+end
+
+`ifdef SIMULATION
+always @*
+if( aux2 && cen_mcu ) begin
+    $display("Tri RAM clash possible");
+    $stop;
+end
+`endif
 
 always @(posedge clk) begin
     if( ~&blank ) blank <= blank + 1'd1 ;

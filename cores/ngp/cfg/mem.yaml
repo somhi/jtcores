@@ -1,39 +1,58 @@
 clocks:
-  clk48:
+  clk:
     - freq: 1024
       outputs:
         - rtc_cen
-        - nc2
-    - freq: 12288000
+    - freq: 4056311
       outputs:
-        - vcen12
-        - vcen6
-  clk24:
-    - freq: 12288000
+        - v0_cen          # pxl_cen, but I cannot use that name here
+        - v1_cen
+    - freq: 6144000
       outputs:
-        - cen12
         - cen6
         - cen3
-    - freq: 12500000
+    - freq: 25000000
       outputs:
-        - phi1_cen
-        - nc
+        - cpu_cen
+        - phi1_cen        # 12.5MHz, MCU timer base
+ports:
+  - { name: cpu_addr, msb: 20, lsb: 1 }
 sdram:
   banks:
     -
-      buses:
-        -
-          name: rom
-          addr_width: 16
-          data_width: 16
-    -
-      buses:
-        -
-          name: cart0
+    - buses:
+        - name: cart0
           addr_width: 21
           data_width: 16
           rw: true
-        # -
-        #   name: cart1
+        # - name: cart1
         #   addr_width: 20
         #   data_width: 8
+
+bram: # 64+8+4+16=92kB
+  - name: rom # 64 kB
+    addr_width: 16
+    data_width: 16
+    sim_file: true
+    rom:
+      offset: 0
+
+  - name: nvram
+    addr_width: 13  # 8kB
+    data_width: 16
+    addr: "cpu_addr[12:1]"
+    din: cpu_dout
+    # sim_file: true
+    rw: true
+  - name: ram1
+    addr_width: 12  # 4kB
+    data_width: 16
+    addr: "cpu_addr[11:1]"
+    din: cpu_dout
+    rw: true
+
+  # - name: flash
+  #   addr_width: 14 # 16kB
+  #   data_width: 16
+  #   rw: true
+  #   ioctl: { save: true }

@@ -24,7 +24,7 @@ wire        snd_rst, black_n, flip;
 wire [ 7:0] snd_latch, main_latch;
 reg  [ 7:0] debug_mux;
 
-reg         tokio;
+reg         tokio, bootleg;
 wire [ 7:0] dipsw_a, dipsw_b;
 wire        main_flag, main_stb, snd_stb;
 
@@ -35,43 +35,35 @@ wire [ 7:0] vram_dout, pal_dout, cpu_dout;
 wire        snd_flag;
 wire        snd_rstn_eff;
 
-assign snd_rstn_eff = ~(tokio ? snd_rst : rst);
-assign debug_view = debug_mux;
-assign { dipsw_b, dipsw_a }   = dipsw[15:0];
-assign dip_flip               = flip;
-
-`ifdef SIMULATION
-`ifndef LOADROM
-    `ifdef TOKIO
-    initial tokio=1;
-    `else
-    initial tokio=0;
-    `endif
-`endif
-`endif
+assign snd_rstn_eff         = ~(tokio ? snd_rst : rst);
+assign debug_view           = debug_mux;
+assign { dipsw_b, dipsw_a } = dipsw[15:0];
+assign dip_flip             = flip;
 
 always @(posedge clk) begin
-    if( prog_we && ioctl_addr==1 )
-        tokio <= prog_data==8'h7e; // single byte detection. Both tokyo and tokyob start like this
+    if( prog_we && header && ioctl_addr[1:0]==0 ) { bootleg, tokio } <= prog_data[1:0];
+        // tokio <= prog_data==8'h7e; // single byte detection. Both tokyo and tokyob start like this at ioctl_addr==1
 end
 
 always @(posedge clk) begin
     case( debug_bus[7:6] )
-        0: debug_mux <= { 2'd0, snd_rstn_eff, snd_rst, 3'd0, tokio};
+        0: debug_mux <= { 2'd0, snd_rstn_eff, snd_rst, 2'd0, bootleg, tokio};
         1: debug_mux <= main_latch;
         2: debug_mux <= snd_latch;
         default: debug_mux <= 0;
     endcase
 end
-
+/* verilator tracing_off */
 `ifndef NOMAIN
 jtbubl_main u_main(
     .rst            ( rst           ),
     .clk            ( clk           ),        // 24 MHz
     .cen6           ( cen6          ),
     .cen4           ( cen4          ),
+    .cen3           ( cen3          ),
 
     .tokio          ( tokio         ),
+    .bootleg        ( bootleg       ),
     // Main CPU ROM
     .main_rom_addr  ( main_addr     ),
     .main_rom_cs    ( main_cs       ),
@@ -84,8 +76,8 @@ jtbubl_main u_main(
     .sub_rom_data   ( sub_data      ),
     // MCU ROM
     .mcu_rom_addr   ( mcu_addr      ),
-    .mcu_rom_cs     ( mcu_cs        ),
-    .mcu_rom_ok     ( mcu_ok        ),
+    .mcu_rom_cs     (               ),
+    .mcu_rom_ok     ( 1'b1          ),
     .mcu_rom_data   ( mcu_data      ),
 
     // Sound
@@ -102,6 +94,7 @@ jtbubl_main u_main(
     .joystick1      ( joystick1     ),
     .joystick2      ( joystick2     ),
     .service        ( service       ),
+    .tilt           ( tilt          ),
     // Video
     .LVBL           ( LVBL          ),
     .flip           ( flip          ),
@@ -117,7 +110,8 @@ jtbubl_main u_main(
     // DIP switches
     .dip_pause      ( dip_pause     ),
     .dipsw_a        ( dipsw_a       ),
-    .dipsw_b        ( dipsw_b       )
+    .dipsw_b        ( dipsw_b       ),
+    .debug_bus      ( debug_bus     )
 );
 `else
 assign main_cs = 0;
@@ -126,7 +120,7 @@ assign vram_cs = 0;
 assign pal_cs  = 0;
 assign black_n = 1;
 `endif
-/* verilator tracing_off */
+/* verilator tracing_on */
 jtbubl_video u_video(
     .rst            ( rst           ),
     .clk            ( clk           ),
@@ -165,7 +159,7 @@ jtbubl_video u_video(
     // Test
     .gfx_en         ( gfx_en        )
 );
-
+/* verilator tracing_off */
 `ifndef NOSOUND
 jtbubl_sound u_sound(
     .rst        ( rst           ),

@@ -58,6 +58,7 @@ SED="sed -i"
 SHAUP=
 START_TIME=$(date +%s)
 UNDEF=
+FAST=
 # Extra arguments for the simulator, passed with -args
 SIMULATOR_EXTRA=
 
@@ -97,6 +98,7 @@ Please support the development: https://patreon.com/jotego
                If the simulation is run from a folder whose name matches a
                .dip file in $ROM, and -dipsw is not set, then jtsim will load
                the matching file automatically
+    -fast      Sets optimizer level to 3 when running Verilator sims. It may cause stability problems.
     -frame     Number of frames to simulate
     -gates     Gate-level simulation
     -fx68k     Keep FX68K files for Icarus Verilog
@@ -149,6 +151,16 @@ Please support the development: https://patreon.com/jotego
                is written after -w, the dump will start at that frame
     -zoom      Enlarge output images
 EOF
+}
+
+function has_parent {
+    p=`pwd`
+    while [ "$p" != "/" ]; do
+        parent=$(dirname "$p")
+        if [ $(basename "$parent") = "$1" ]; then return 0; fi
+        p=$parent
+    done
+    return 1
 }
 
 function clean_up {
@@ -282,6 +294,11 @@ function set_zoom {
     export CONVERT_OPTIONS="-resize 200%x200% $CONVERT_OPTIONS"
 }
 
+if ! has_parent ver; then
+    echo "jtsim must be called from within the ver folder of the core"
+    exit 1
+fi
+
 while [ $# -gt 0 ]; do
 case "$1" in
     -args) shift; SIMULATOR_EXTRA="$SIMULATOR_EXTRA $1";;
@@ -327,6 +344,7 @@ case "$1" in
             exit 1
         fi
         ;;
+    -fast) FAST=1;;
     -inputs)
         if [ ! -e sim_inputs.hex ]; then
             echo "-inputs specified but there is no sim_inputs.hex file"
@@ -465,21 +483,10 @@ if [ -z "$SYSNAME" ]; then
 fi
 require "$SYSNAME" "Missing core name. Specify it with -sysname"
 
-# fits set name in 8 characters, matching the mra tool behavior
-function shorten_name {
-    if [ ${#1} -le 8 ]; then
-        echo $1;
-    else
-        local L=${#1}
-        L=$((L-3))
-        echo ${1:0:5}${1:L}
-    fi
-}
-
 # Load DIP switches when there is a matching file in $ROM and
 # none have been specified yet
 if [[ -z "$SETNAME" && -e $ROM/$(basename `pwd`).dip && `expr match "$ALLMACROS" ".*JTFRAME_SIM_DIPS.*"` -eq 0 ]]; then
-    AUX=$(shorten_name $(basename `pwd`))
+    AUX=$(basename `pwd`)
     add_macro JTFRAME_SIM_DIPS=0x$(cat $ROM/$(basename `pwd`).dip)
     if [ -e $ROM/$AUX.mod ]; then cp $ROM/$AUX.mod core.mod; fi
     echo "Using DIP switches from rom/$(basename `pwd`).dip"
@@ -492,19 +499,19 @@ if [ ! -z "$SETNAME" ]; then
         cd "$SETNAME"
     fi
     if [ -z "$SKIPROM" ]; then getset.sh $SYSNAME $SETNAME $SKIPROM || exit $?; fi
-    SHORTSETNAME=`shorten_name $SETNAME`
-    if [ -e $ROM/$SHORTSETNAME.dip ]; then
+    if [ -e $ROM/$SETNAME.dip ]; then
         if ! has_macro JTFRAME_SIM_DIPS; then
             # Not all systems have DIPs
-            DIPS=`cat $ROM/$SHORTSETNAME.dip`
+            DIPS=`cat $ROM/$SETNAME.dip`
             if [ ! -z "$DIPS" ]; then add_macro JTFRAME_SIM_DIPS=0x$DIPS; fi
         fi
     fi
-    ROMFILE=$ROM/$SHORTSETNAME.rom
+    ROMFILE=$ROM/$SETNAME.rom
     if [ ! -e $ROMFILE ]; then
         cat<<EOF
 jtsim: cannot produce $ROMFILE"
-    This may occur if the setname is long than 8 characters
+    This may occur if the setname is longer than 8 characters or
+    if you are not in the core folder for the game
 EOF
         exit 1
     fi
@@ -614,9 +621,9 @@ fi
 
 if [ $GATES = NO ]; then
     # Prepare all file lists
-    jtframe mem $SYSNAME --target "$TARGET" || exit $?
+    jtframe mem $SYSNAME --target "$TARGET" --local || exit $?
     jtframe mmr $SYSNAME || exit $?
-    jtframe files sim $SYSNAME --rel --target "$TARGET" --macro "$ALLMACROS" || exit $?
+    jtframe files sim $SYSNAME --rel --local --target "$TARGET" --macro "$ALLMACROS" || exit $?
     # Remove duplicated lines
     rm -f tmp.f
     rm -f game_env.f
@@ -669,9 +676,13 @@ mist_dump.v \
     FILES=
 fi
 
-# Link to hex filters in JTFRAME as needed
+# Link to hex filters in module files as needed
 if grep -q jtframe_jt49_filters filtered.f; then
     ln -srf $JTFRAME/hdl/sound/firjt49.hex
+fi
+
+if grep -q jt6295 filtered.f; then
+    for i in $MODULES/jt6295/hdl/*.hex; do ln -srf $i; done
 fi
 
 # These tools use the same names for their executables, so the
@@ -694,7 +705,6 @@ iverilog)
         $SIMULATOR_EXTRA \
         -s $TOP -o $SIMEXE \
         -DIVERILOG $EXTRA -I$CORES/$SYSNAME/hdl -I$JTFRAME/hdl/inc \
-        -I$CORES/$SYSNAME/$TARGET \
         -I$MODULES/jtkcpu/hdl -I$MODULES/jt900h/hdl \
         -DDUMP_VIDEO_FNAME=\"video.pipe\" $FILES \
     || exit 1
@@ -708,7 +718,6 @@ modelsim|questasim)
     $SHOWCMD vlog -svfilesuffix=sv -svinputport=net -suppress vlog-7061 \
         +initwireX $SIMULATOR_EXTRA \
         +incdir+$CORES/$SYSNAME/hdl +incdir+$JTFRAME/hdl/inc \
-        +incdir+$CORES/$SYSNAME/$TARGET \
         +incdir+$MODULES/jtkcpu/hdl +incdir+$MODULES/jt900h/hdl \
         $SIMARGS $SIMULATOR_EXTRA\
         $EXTRA +define+DUMP_VIDEO_FNAME=\"video.pipe\" \
@@ -728,7 +737,6 @@ xcelium)
         -f filtered.f $FILES -nowarn RECOME \
         -top $TOP \
         -incdir $CORES/$SYSNAME/hdl -incdir $JTFRAME/hdl/inc \
-        -incdir $CORES/$SYSNAME/$TARGET \
         -incdir $MODULES/jtkcpu/hdl -incdir $MODULES/jt900h/hdl \
         $SIMARGS $SIMULATOR_EXTRA\
         -define DUMP_VIDEO_FNAME=\"video.pipe\" \
@@ -739,7 +747,6 @@ synapticad)
         -f filtered.f $FILES \
         +scd_top+$TOP \
         +incdir+$CORES/$SYSNAME/hdl +incdir+$JTFRAME/hdl/inc \
-        +incdir+$CORES/$SYSNAME/$TARGET \
         +incdir+$MODULES/jtkcpu/hdl +incdir+$MODULES/jt900h/hdl \
         $SIMARGS $SIMULATOR_EXTRA\
         +define+DUMP_VIDEO_FNAME=\"video.pipe\" \
@@ -752,7 +759,6 @@ ncverilog)
         -disable_sem2009 $FILES \
         +nctop+$TOP \
         +incdir+$CORES/$SYSNAME/hdl +incdir+$JTFRAME/hdl/inc \
-        +incdir+$CORES/$SYSNAME/$TARGET \
         +incdir+$MODULES/jtkcpu/hdl +incdir+$MODULES/jt900h/hdl \
         -ncvhdl_args,-V93 \
         $SIMARGS $SIMULATOR_EXTRA\
@@ -761,7 +767,14 @@ ncverilog)
         $EXTRA -l /dev/null || exit $?;;
 verilator)
     TRACE=$(if [ ! -z "$DUMP" ]; then echo --trace; fi)
-    export CPPFLAGS=-O1
+    if [ -z "$CPPFLAGS" ]; then
+        if [[ ! -z "$MAXFRAME" && "$MAXFRAME" -gt 600 ]]; then
+            export CPPFLAGS=-O2
+            echo "Using CPPFLAGS=$CPPFLAGS for faster simulation"
+        else
+            export CPPFLAGS=-O1
+        fi
+    fi
     if [ ! -z "$TRACE" ]; then
         export CPPFLAGS="$CPPFLAGS -DVERILATOR_TRACE"
     fi
@@ -777,7 +790,7 @@ verilator)
     # but if you use JTFPGA/FX68K branch fix 6, you should be able to simulate it
     if [ ! -z "$VERILATOR_ROOT" ]; then VERILATOR_PATH=${VERILATOR_ROOT}/bin/; fi
     $SHOWCMD ${VERILATOR_PATH}verilator -I$CORES/$SYSNAME/hdl \
-        -I$JTFRAME/hdl/inc -I$CORES/$SYSNAME/$TARGET \
+        -I$JTFRAME/hdl/inc \
         -I$MODULES/jtkcpu/hdl -I$MODULES/jt900h/hdl \
         --timescale 1ps/1ps \
         $JTFRAME/hdl/ver/game_test.v $JTFRAME/hdl/video/jtframe_lfbuf*.v $JTFRAME/hdl/ver/psram128.v $SIMARGS \
@@ -791,7 +804,7 @@ verilator)
     # all simulations will compete against each other for CPU resources
     if [ -z "$JTFRAME_REGRESSION" ]; then MAKEJOBS=-j; fi
     # boost C++ optimization without affecting other settings
-    # export CPPFLAGS=`echo "$CPPFLAGS" | sed s/-O1/-O3/`
+    if [ ! -z "$FAST" ]; then export CPPFLAGS=`echo "$CPPFLAGS" | sed s/-O1/-O3/`; fi
     if echo "$EXTRA" | grep -q lint-only; then
         echo "Lint only: no simulation "
     else
@@ -834,7 +847,7 @@ if [ $(ls frames/frame*jpg 2>/dev/null | wc -l ) -gt 250 ]; then
     if has_macro JTFRAME_SIM_VIDEO; then FRAMERATE=60; fi
     ffmpeg -y -framerate $FRAMERATE \
         -pattern_type glob -i frames/'frame_*.jpg' \
-        -i snd.wav -c:a aac -c:v libx264 -vf "scale=iw*3:ih*3" \
+        -i test.wav -c:a aac -c:v libx264 -vf "scale=iw*3:ih*3" \
         -pix_fmt yuv420p test.mp4 > /dev/null
 fi
 
@@ -849,6 +862,6 @@ echo "====== JTSIM finished in "$MINUTES\'$SECONDS\"" ======"
 # Open the image viewer for scene sims
 if which eom > /dev/null; then
     if [[ ! -z "$SCENE" && -e frames/frame_00001.jpg ]]; then
-        eom frames/frame_00001.jpg &
+        eom `ls frames/frame_*.jpg | tail -n 1` &
     fi
 fi

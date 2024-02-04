@@ -57,6 +57,9 @@ func save_rom(root *XMLNode, verbose, save2disk bool) {
 		return
 	}
 	update_md5(xml_rom, rombytes)
+	if len(rombytes)%4 != 0 {
+		fmt.Printf("Warning (%-12s): ROM length is not multiple of four. Analogue Pocket will not load it well\n", setname.text)
+	}
 	if save2disk {
 		patchrom(xml_rom, &rombytes)
 		rom_file(setname, ".rom", rombytes)
@@ -65,7 +68,7 @@ func save_rom(root *XMLNode, verbose, save2disk bool) {
 
 func rom_file(setname *XMLNode, ext string, rombytes []byte) {
 	os.MkdirAll( filepath.Join(os.Getenv("JTROOT"), "rom"), 0775 )
-	fout_name := filepath.Join(os.Getenv("JTROOT"), "rom", shorten_name(setname.text)+ext) // setname.text should be shortened to match mra.exe's output
+	fout_name := filepath.Join(os.Getenv("JTROOT"), "rom", setname.text+ext)
 	fout, err := os.Create(fout_name)
 	if err != nil {
 		fmt.Println(err)

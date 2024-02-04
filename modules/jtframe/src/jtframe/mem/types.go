@@ -57,6 +57,7 @@ type BRAMBus struct {
     Ioctl      struct {
         Save bool `yaml:"save"`
         Order int `yaml:"order"`
+        Restore bool `yaml:"restore"`
     } `yaml:"ioctl"`
     Dual_port  struct {
         Name string `yaml:"name"`
@@ -74,6 +75,7 @@ type BRAMBus struct {
 }
 
 type SDRAMBank struct {
+    Region  string
     Buses []SDRAMBus `yaml:"buses"`
     // Precalculated values
     MemType string
@@ -116,16 +118,17 @@ type ClockCfg struct {
     Gate    []string `yaml:"gate"`      // SDRAM buses that will halt the clock enable
     // values for jtframe_frac_cen instantiation
     ClkName string
+    KHz     int         // clock frequency in kHz
     WC, W   int
     OutStr  string
     Comment string
     Busy    string
 }
 
-type IoctlBus struct{
+type IoctlBus struct{ // not a YAML type
     DW, AW, AWl int
     Blocks, SkipBlocks, Size, SizekB int
-    Name, Dout, Ain, Aout string
+    Name, Dout, A, Amx, Din, We string
 }
 
 type Ioctl struct {
@@ -158,4 +161,5 @@ type MemConfig struct {
     Gfx8     string
     Gfx16    string
     Gfx8b0, Gfx16b0 int
+    Balut,Lutsh,Lutdw int
 }

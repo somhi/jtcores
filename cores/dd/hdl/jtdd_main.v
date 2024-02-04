@@ -25,16 +25,15 @@
 module jtdd_main(
     input              clk,
     input              rst,
-    (* direct_enable *) input cen12,
-    output             cpu_cen,
+    input              cpu_cen,
     input              VBL,
-(*keep*)    input              IMS, // =VPOS[3]
+    input              IMS, // =VPOS[3]
     // MCU
     input       [7:0]  mcu_ram,
     input              mcu_irqmain,
     input              mcu_ban,
     output             mcu_nmi_set,
-    output  reg        mcu_halt,
+    output  reg        mcu_haltn,
     output  reg        com_cs,
     // Palette
     output  reg        pal_cs,
@@ -68,7 +67,6 @@ module jtdd_main(
     output  reg        rom_cs,
     output  reg [17:0] rom_addr,
     input       [ 7:0] rom_data,
-    input              rom_ok,
     // DIP switches
     input              service,
     input              dip_pause,
@@ -172,7 +170,7 @@ always @(posedge clk or posedge rst) begin
     if( rst ) begin
         bank        <= 3'd0;
         //flip        <= 1'b0;
-        mcu_halt    <= 1'b0;
+        mcu_haltn   <= 1'b0;
         scrhpos     <= 9'b0;
         scrvpos     <= 9'b0;
         mcu_rstb    <= 1'b0;
@@ -189,8 +187,12 @@ always @(posedge clk or posedge rst) begin
             scrvpos[8] <= cpu_dout[1];
             //flip       <=~cpu_dout[2];
             mcu_rstb   <= cpu_dout[3];
-            mcu_halt   <= cpu_dout[4];
+            mcu_haltn  <= ~cpu_dout[4];
             bank       <= cpu_dout[7:5];
+            // `ifdef SIMULATION
+            //     if(  cpu_dout[4] &&  mcu_haltn ) $display("MCU halted");
+            //     if( !cpu_dout[4] && !mcu_haltn ) $display("MCU released");
+            // `endif
         end
     end
 end
@@ -221,16 +223,16 @@ assign cpu_AB = A[12:0];
 
 reg [7:0] cpu_din;
 
-always @(*) begin // do not register
+always @* begin // do not register
     case( 1'b1 )
         ram_cs    : cpu_din = ram_dout;
         cram_cs   : cpu_din = char_dout;
-        vram_cs    : cpu_din = scr_dout;
+        vram_cs   : cpu_din = scr_dout;
         rom_cs    : cpu_din = rom_data;
         banked_cs : cpu_din = rom_data;
         io_cs     : cpu_din = cabinet_input;
         pal_cs    : cpu_din = pal_dout;
-        oram_cs    : cpu_din = obj_dout;
+        oram_cs   : cpu_din = obj_dout;
         com_cs    : cpu_din = mcu_ram;
         default   : cpu_din = 8'hff;
     endcase
@@ -267,11 +269,11 @@ jtframe_ff #(.W(3)) u_irq(
 );
 
 // RECOVERY does not seem to have an effect on DD2 hanging up
-jtframe_sys6809 #(.RAM_AW(13),.RECOVERY(1)) u_cpu(
+jtframe_sys6809 #(.RAM_AW(13),.CENDIV(0),.RECOVERY(0)) u_cpu(
     .rstn       ( ~rst      ),
     .clk        ( clk       ),
-    .cen        ( cen12     ),   // This is normally the input clock to the CPU
-    .cpu_cen    ( cpu_cen   ),   // 1/4th of cen -> 3MHz
+    .cen        ( cpu_cen   ),   // This is normally the input clock to the CPU
+    .cpu_cen    (           ),
     .VMA        (           ),
     // Interrupts
     .nIRQ       ( nIRQ      ),
@@ -285,7 +287,7 @@ jtframe_sys6809 #(.RAM_AW(13),.RECOVERY(1)) u_cpu(
     .RnW        ( RnW       ),
     .ram_cs     ( ram_cs    ),
     .rom_cs     ( rom_cs    ),
-    .rom_ok     ( rom_ok    ),
+    .rom_ok     ( 1'b1      ),
     // Bus multiplexer is external
     .ram_dout   ( ram_dout  ),
     .cpu_dout   ( cpu_dout  ),

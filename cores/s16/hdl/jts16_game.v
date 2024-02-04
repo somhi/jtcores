@@ -268,7 +268,7 @@ assign key_mcaddr=0;
         assign tile_bank = sim_def[0][5:0];
     `endif
 `endif
-
+/* verilator tracing_off */
 `ifndef NOSOUND
 `JTS16_SND u_sound(
     .rst        ( rst       ),
@@ -330,13 +330,14 @@ assign key_mcaddr=0;
     .peak       ( snd_clip  )
 );
 `else
-    assign snd_cs=0;
-    assign sample=0;
-    assign snd_addr=0;
-    assign snd_ack=1;
+    assign snd      = 0;
+    assign snd_cs   = 0;
+    assign sample   = 0;
+    assign snd_addr = 0;
+    assign snd_ack  = 1;
     `ifdef SIMULATION
-    assign pcm_cs=0;
-    assign pcm_addr=0;
+    assign pcm_cs   = 0;
+    assign pcm_addr = 0;
     `endif
 `endif
 

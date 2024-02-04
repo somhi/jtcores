@@ -29,8 +29,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/jotego/jtframe/jtfiles"
-	"github.com/jotego/jtframe/jtdef"
+	"github.com/jotego/jtframe/files"
+	"github.com/jotego/jtframe/def"
 
 	"gopkg.in/yaml.v2"
 )
@@ -96,7 +96,7 @@ var funcMap = template.FuncMap{
 
 func parse_file(core, filename string, cfg *MemConfig, args Args) bool {
 	filename = jtfiles.GetFilename(core, filename, "")
-	buf, err := ioutil.ReadFile(filename)
+	buf, err := os.ReadFile(filename)
 	if err != nil {
 		if args.Verbose {
 			log.Printf("jtframe mem: no memory file (%s)", filename)
@@ -165,7 +165,7 @@ func parse_file(core, filename string, cfg *MemConfig, args Args) bool {
 }
 
 func make_sdram( finder path_finder, cfg *MemConfig) {
-	tpath := filepath.Join(os.Getenv("JTFRAME"), "src", "jtframe", "mem", "game_sdram.v")
+	tpath := filepath.Join(os.Getenv("JTFRAME"), "hdl", "inc", "game_sdram.v")
 	t := template.Must(template.New("game_sdram.v").Funcs(funcMap).ParseFiles(tpath))
 	var buffer bytes.Buffer
 	t.Execute(&buffer, cfg)
@@ -178,7 +178,7 @@ func add_game_ports(args Args, cfg *MemConfig) {
 	make_inc := false
 	found := false
 
-	tpath := filepath.Join(os.Getenv("JTFRAME"), "src", "jtframe", "mem", "ports.v")
+	tpath := filepath.Join(os.Getenv("JTFRAME"), "hdl", "inc", "ports.v")
 	t := template.Must(template.New("ports.v").Funcs(funcMap).ParseFiles(tpath))
 	var buffer bytes.Buffer
 	t.Execute(&buffer, cfg)
@@ -233,11 +233,11 @@ func add_game_ports(args Args, cfg *MemConfig) {
 }
 
 func get_macros( core, target string ) (map[string]string) {
-	var def_cfg jtdef.Config
+	var def_cfg def.Config
 	def_cfg.Target = target
 	def_cfg.Core = core
-	// def_cfg.Add = jtcfgstr.Append_args(def_cfg.Add, strings.Split(args.AddMacro, ","))
-	return jtdef.Make_macros(def_cfg)
+	// def_cfg.Add = cfgstr.Append_args(def_cfg.Add, strings.Split(args.AddMacro, ","))
+	return def.Make_macros(def_cfg)
 }
 
 func check_banks( macros map[string]string, cfg *MemConfig ) {
@@ -257,26 +257,41 @@ func check_banks( macros map[string]string, cfg *MemConfig ) {
 			}
 		}
 	}
-	if len(cfg.SDRAM.Banks)>1  {
-		if macros["JTFRAME_BA1_START"]=="" {
-			fmt.Println("Missing JTFRAME_BA1_START")
-			bad = true
+	region_lut := false
+	for _, each := range cfg.SDRAM.Banks {
+		if each.Region != "" {
+			region_lut = true
+			break
 		}
-		check_we( 1, "JTFRAME_BA1_WEN" )
 	}
-	if len(cfg.SDRAM.Banks)>2 {
-		if macros["JTFRAME_BA2_START"]=="" {
-			fmt.Println("Missing JTFRAME_BA2_START")
-			bad = true
+	if !region_lut {
+		if len(cfg.SDRAM.Banks)>1  {
+			if macros["JTFRAME_BA1_START"]=="" {
+				fmt.Println("Missing JTFRAME_BA1_START")
+				bad = true
+			}
+			check_we( 1, "JTFRAME_BA1_WEN" )
 		}
-		check_we( 2, "JTFRAME_BA2_WEN" )
-	}
-	if len(cfg.SDRAM.Banks)>3 {
-		if macros["JTFRAME_BA3_START"]=="" {
-			fmt.Println("Missing JTFRAME_BA3_START")
-			bad = true
+		if len(cfg.SDRAM.Banks)>2 {
+			if macros["JTFRAME_BA2_START"]=="" {
+				fmt.Println("Missing JTFRAME_BA2_START")
+				bad = true
+			}
+			check_we( 2, "JTFRAME_BA2_WEN" )
 		}
-		check_we( 3, "JTFRAME_BA3_WEN" )
+		if len(cfg.SDRAM.Banks)>3 {
+			if macros["JTFRAME_BA3_START"]=="" {
+				fmt.Println("Missing JTFRAME_BA3_START")
+				bad = true
+			}
+			check_we( 3, "JTFRAME_BA3_WEN" )
+		}
+	} else {
+		if macros["JTFRAME_HEADER"]=="" {
+			fmt.Println(`Missing JTFRAME_HEADER but the SDRAM banks are pointing to a region.
+Set JTFRAME_HEADER in macros.def and define a [header.offset] in mame2mra.toml
+`)
+		}
 	}
 	if bad {
 		os.Exit(1)
@@ -382,7 +397,8 @@ func fill_implicit_ports( macros map[string]string, cfg *MemConfig, Verbose bool
 		each := &cfg.BRAM[k]
 		bram_rom := !each.Rw && !each.Dual_port.Rw // BRAM used as ROM
 		if each.Addr == "" { each.Addr = each.Name + "_addr" }
-		if each.Din  == "" && each.Rw { each.Din  = each.Name + "_din"  }
+		if each.Din  == "" && each.Rw { each.Din = each.Name + "_din"  }
+		if each.We   == "" && each.Rw { each.We  = each.Name + "_we"   }
 		if each.Dout == "" {
 			if bram_rom {
 				each.Dout = each.Name + "_data"
@@ -470,22 +486,43 @@ func make_ioctl( macros map[string]string, cfg *MemConfig, verbose bool ) int {
 	for _, each := range tosave {
 		if each == nil { continue }
 		each.Sim_file=true
-		i := each.Ioctl.Order
-		cfg.Ioctl.Buses[i].Name = each.Name
-		cfg.Ioctl.Buses[i].AW = each.Addr_width
-		cfg.Ioctl.Buses[i].AWl = each.Data_width>>4
-		cfg.Ioctl.Buses[i].Aout = each.Name+"_amux"
-		cfg.Ioctl.Buses[i].Ain  = each.Name+"_addr"
-		if each.Addr!="" { cfg.Ioctl.Buses[i].Ain = each.Addr }
-		cfg.Ioctl.Buses[i].DW = each.Data_width
-		cfg.Ioctl.Buses[i].Dout = each.Name+"_dout"
-		each.Addr = each.Name+"_amux"
-		dump_size += 1<<each.Addr_width
-		cfg.Ioctl.Buses[i].Size = 1<<each.Addr_width
-		cfg.Ioctl.Buses[i].SizekB = cfg.Ioctl.Buses[i].Size >> 10
-		cfg.Ioctl.Buses[i].Blocks = cfg.Ioctl.Buses[i].Size >> 8
-		cfg.Ioctl.Buses[i].SkipBlocks = total_blocks
-		total_blocks += cfg.Ioctl.Buses[i].Blocks
+		ioinfo := &cfg.Ioctl.Buses[each.Ioctl.Order] // fill data for ioctl_dump module
+		ioinfo.Name = each.Name
+		ioinfo.AW   = each.Addr_width
+		ioinfo.AWl  = each.Data_width>>4
+		ioinfo.Amx  = each.Name+"_amux"
+		ioinfo.A    = each.Name+"_addr"
+		if each.Addr!="" { ioinfo.A = each.Addr }
+		ioinfo.DW   = each.Data_width
+		ioinfo.Dout = each.Name+"_dout"
+		ioinfo.Din  = each.Din
+		each.Addr   = each.Name+"_amux"
+		// restore
+		if ioinfo.DW==8 {
+			ioinfo.We = "1'b0"
+		} else {
+			ioinfo.We = "2'b0"
+		}
+		if each.Ioctl.Restore {
+			if each.Rw {
+				ioinfo.We = each.We
+				if each.We == "" {
+					ioinfo.We = "2'b0"
+				}
+			}
+			each.We  = each.Name+"_wemx"
+			if each.Data_width==8 {
+				each.We+="[0]"
+			}
+			each.Din = each.Name+"_dimx"
+		}
+		// size
+		dump_size     += 1<<each.Addr_width
+		ioinfo.Size   = 1<<each.Addr_width
+		ioinfo.SizekB = ioinfo.Size >> 10
+		ioinfo.Blocks = ioinfo.Size >> 8
+		ioinfo.SkipBlocks = total_blocks
+		total_blocks  += ioinfo.Blocks
 	}
 	cfg.Ioctl.SkipAll = total_blocks
 	if found {
@@ -500,7 +537,8 @@ func make_ioctl( macros map[string]string, cfg *MemConfig, verbose bool ) int {
 		if each.DW==0 {
 			each.DW=8
 			each.Dout = "8'd0"
-			each.Ain  = "1'd0"
+			each.A    = "1'b0"
+			each.We   = "1'b0"
 		}
 	}
 	// warn if JTFRAME_IOCTL_RD is below the required one
@@ -544,7 +582,7 @@ func fill_gfx_sort( macros map[string]string, cfg *MemConfig ) {
 	// this will not merge correctly hhvvv and hhvvvx used together, that's
 	// not supported in jtframe_dwnld at the moment
 	appendif := func( ss *[]string, mac string ) {
-		if jtdef.Defined(macros,mac) { *ss = append(*ss, "`"+mac) }
+		if def.Defined(macros,mac) { *ss = append(*ss, "`"+mac) }
 	}
 	make_gfx := func( match string ) (string, int) {
 		ranges :=  make([]string,0)
@@ -574,10 +612,10 @@ func fill_gfx_sort( macros map[string]string, cfg *MemConfig ) {
 					}
 					offsets2 = append(offsets,fmt.Sprintf("(%s<<1)",bank.Buses[j+1].Offset))
 				} else {
-					if jtdef.Defined(macros,fmt.Sprintf("JTFRAME_BA%d_START",k+1)) { // is there another bank
+					if def.Defined(macros,fmt.Sprintf("JTFRAME_BA%d_START",k+1)) { // is there another bank
 						appendif( &offsets2, "JTFRAME_HEADER" )
 						offsets2 = append(offsets2,fmt.Sprintf("`JTFRAME_BA%d_START",k+1))
-					} else if jtdef.Defined(macros,"JTFRAME_PROM_START") {
+					} else if def.Defined(macros,"JTFRAME_PROM_START") {
 						appendif( &offsets2, "JTFRAME_HEADER" )
 						offsets2 = append(offsets2,"JTFRAME_PROM_START")
 					}

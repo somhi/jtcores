@@ -25,85 +25,7 @@
 `endif
 
 module jtsf_game(
-    input           rst,
-    input           clk,
-    input           rst24,
-    input           clk24,
-    output          pxl2_cen,   // 12   MHz
-    output          pxl_cen,    //  6   MHz
-    output   [3:0]  red,
-    output   [3:0]  green,
-    output   [3:0]  blue,
-    output          LHBL,
-    output          LVBL,
-    output          HS,
-    output          VS,
-    // cabinet I/O
-    input   [ 1:0]  cab_1p,
-    input   [ 1:0]  coin,
-    input   [ 9:0]  joystick1,
-    input   [ 9:0]  joystick2,
-
-    // SDRAM interface
-    input           ioctl_rom,
-    output          dwnld_busy,
-
-    // Bank 0: allows R/W
-    output   [21:0] ba0_addr,
-    output   [21:0] ba1_addr,
-    output   [21:0] ba2_addr,
-    output   [21:0] ba3_addr,
-    output   [15:0] ba0_din,
-    output   [ 1:0] ba0_dsn,
-    output   [15:0] ba1_din,
-    output   [ 1:0] ba1_dsn,
-    output   [15:0] ba2_din,
-    output   [ 1:0] ba2_dsn,
-    output   [15:0] ba3_din,
-    output   [ 1:0] ba3_dsn,
-    output   [ 3:0] ba_rd,
-    output   [ 3:0] ba_wr,
-    input    [ 3:0] ba_ack,
-    input    [ 3:0] ba_dst,
-    input    [ 3:0] ba_dok,
-    input    [ 3:0] ba_rdy,
-
-    input   [15:0]  data_read,
-    // ROM LOAD
-    input   [25:0]  ioctl_addr,
-    input   [ 7:0]  ioctl_dout,
-    input           ioctl_wr,
-    output  [21:0]  prog_addr,
-    output  [15:0]  prog_data,
-    output  [ 1:0]  prog_mask,
-    output  [ 1:0]  prog_ba,
-    output          prog_we,
-    output          prog_rd,
-    input           prog_ack,
-    input           prog_dst,
-    input           prog_dok,
-    input           prog_rdy,
-
-    // DIP switches
-    input   [31:0]  status,
-    input   [31:0]  dipsw,
-    input           service,
-    input           tilt,
-    input           dip_pause,
-    output          dip_flip,
-    input           dip_test,
-    input   [ 1:0]  dip_fxlevel, // Not a DIP on the original PCB
-    // Sound output
-    output  signed [15:0] snd_left,
-    output  signed [15:0] snd_right,
-    output          sample,
-    output          game_led,
-    input           enable_psg,
-    input           enable_fm,
-    // Debug
-    input   [ 3:0]  gfx_en,
-    input   [ 7:0]  debug_bus,
-    output  [ 7:0]  debug_view
+    `include "jtframe_game_ports.inc" // see $JTFRAME/hdl/inc/jtframe_game_ports.inc
 );
 
 localparam
@@ -119,25 +41,25 @@ localparam
     MCUW  = 12, // 4kB
     OBJW  = 21;
 
-localparam [21:0] MAIN_OFFSET = 22'h0,
-                  RAM_OFFSET  = 22'h4_0000,
+localparam [24:0] MAIN_OFFSET = 25'h0,
+                  RAM_OFFSET  = 25'h4_0000,
                   // Bank 1
-                  BA1_START   = 22'h6_0000,
-                  SND_OFFSET  = 22'h0,
-                  SND2_OFFSET = 22'h8000 >> 1,
-                  MCU_OFFSET  = 22'h4_8000 >> 1,
+                  BA1_START   = 25'h6_0000,
+                  SND_OFFSET  = 25'h0,
+                  SND2_OFFSET = 25'h8000 >> 1,
+                  MCU_OFFSET  = 25'h4_8000 >> 1,
                   // Bank 2
-                  BA2_START   = 22'hA_8000,
-                  MAP1_OFFSET = 22'h0,
-                  MAP2_OFFSET = 22'h2_0000 >> 1,
-                  CHAR_OFFSET = 22'h4_0000 >> 1,
+                  BA2_START   = 25'hA_8000,
+                  MAP1_OFFSET = 25'h0,
+                  MAP2_OFFSET = 25'h2_0000 >> 1,
+                  CHAR_OFFSET = 25'h4_0000 >> 1,
                   // Bank 3
-                  BA3_START   = 22'hE_C000,
-                  SCR1_OFFSET = 22'h0,
-                  SCR2_OFFSET = 22'h10_0000 >> 1,
-                  OBJ_OFFSET  = 22'h18_0000 >> 1;
-
-localparam [24:0] PROM_START  = 25'h42_C000;
+                  BA3_START   = 25'hE_C000,
+                  SCR1_OFFSET = 25'h0,
+                  SCR2_OFFSET = 25'h10_0000 >> 1,
+                  OBJ_START   = 25'h26_C000,
+                  OBJ_OFFSET  = 25'h18_0000 >> 1,
+                  PROM_START  = 25'h42_C000;
 
 wire [ 8:0] V;
 wire [ 8:0] H;
@@ -252,11 +174,11 @@ wire [12:0] obj_AB;
 wire [15:0] oram_dout;
 
 wire [21:0] pre_prog;
-wire        prom_we;
-reg         mcu_en, mcu_lock;
+wire        prom_we, prog_obj;
 
 // Optimize cache use for object ROMs
-assign prog_addr = (prog_ba == 2'd3 && prog_addr>=OBJ_OFFSET && ioctl_addr[22:1]<PROM_START[21:0]) ?
+assign prog_obj  = ioctl_addr[24:0]>=OBJ_START && ioctl_addr[24:0]<PROM_START;
+assign prog_addr = prog_obj ?
     { pre_prog[21:6],pre_prog[4:1],pre_prog[5],pre_prog[0]} :
     pre_prog;
 
@@ -264,18 +186,6 @@ assign prog_addr = (prog_ba == 2'd3 && prog_addr>=OBJ_OFFSET && ioctl_addr[22:1]
 always @(posedge clk) begin
     if( ioctl_addr==26'h19910 && ioctl_wr )
         game_id <= ioctl_dout==6;
-end
-
-always @(posedge clk, posedge rst) begin
-    if( rst ) begin
-        mcu_en   <= 0;
-        mcu_lock <= 0;
-    end else begin
-        if( prom_we && !mcu_lock ) begin
-            mcu_lock <= 1;
-            mcu_en   <= prog_data[7:0] != 8'hff;
-        end
-    end
 end
 
 jtframe_dwnld #(
@@ -428,18 +338,20 @@ jtsf_main #( .MAINW(MAINW), .RAMW(RAMW) ) u_main (
     assign RnW      = 1;
     assign UDSWn    = 1;
     assign LDSWn    = 1;
-    assign ram_addr = 14'd0;
+    assign ram_addr = 0;
     assign ram_cs   = 0;
+    assign col_uw   = 0;
+    assign col_lw   = 0;
     `endif
 `endif
 
 `ifndef NOMCU
     jtsf_mcu u_mcu(
         .rst        ( rst24     ),
+        .clk        ( clk24     ),
         .clk_rom    ( clk       ),
         .rst_cpu    ( rst       ),
         .clk_cpu    ( clk       ),
-        .clk        ( clk24     ),
         // Main CPU interface
         .mcu_din    ( mcu_din   ),
         .mcu_dout   ( mcu_dout  ),
@@ -578,6 +490,7 @@ assign char_busy = 1'b0;
 `endif
 
 jtframe_ram1_2slots #(
+    .ERASE       (  0            ),
     .SLOT0_AW    ( RAMW          ), // Main CPU RAM
     .SLOT0_DW    ( 16            ),
 
@@ -597,10 +510,11 @@ jtframe_ram1_2slots #(
     .slot0_ok    ( ram_ok        ),
     .slot1_ok    ( main_ok       ),
 
-    .slot0_offset( RAM_OFFSET    ),
+    .slot0_offset( RAM_OFFSET[21:0]),
 
     .slot0_din   ( ram_din       ),
     .slot0_wrmask( ram_dsn       ),
+    .hold_rst    (               ),
 
     .slot0_addr  ( ram_addr      ),
     .slot1_addr  ( main_addr     ),

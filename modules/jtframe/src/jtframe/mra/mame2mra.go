@@ -12,12 +12,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/jotego/jtframe/jtdef"
+	"github.com/jotego/jtframe/betas"
+	"github.com/jotego/jtframe/def"
 	toml "github.com/komkom/toml"
 )
 
@@ -32,6 +34,7 @@ func (this *StartNode) add_length(pos int) {
 }
 
 func Run(args Args) {
+	pocket_clear()
 	defer close_allzip()
 	parse_args(&args)
 	mra_cfg := parse_toml(&args) // macros become part of args
@@ -65,7 +68,7 @@ extra_loop:
 			break
 		}
 		if args.Verbose {
-			fmt.Print("Found ", machine.Name)
+			fmt.Print("#####################\n#####################\nFound", machine.Name)
 			if machine.Cloneof != "" {
 				fmt.Printf(" (%s)", machine.Cloneof)
 			}
@@ -89,8 +92,8 @@ extra_loop:
 		}
 		for _, reg := range mra_cfg.ROM.Regions {
 			for k, r := range machine.Rom {
-				if r.Region == reg.Rename && reg.Rename != "" {
-					machine.Rom[k].Region = reg.Name
+				if r.Region == reg.Name && reg.Rename != "" && reg.Match(machine)>0 {
+					machine.Rom[k].Region = reg.Rename
 				}
 			}
 		}
@@ -112,8 +115,8 @@ extra_loop:
 	for _, d := range data_queue {
 		_, good := parent_names[d.machine.Cloneof]
 		if good || len(d.machine.Cloneof) == 0 {
-			if !args.SkipPocket {
-				pocket_add(d.machine, mra_cfg, args, d.def_dipsw, d.coremod)
+			if args.PrintNames {
+				fmt.Println(d.machine.Description)
 			}
 			if !args.SkipMRA {
 				// Delete old MRA files
@@ -138,6 +141,9 @@ extra_loop:
 				dumped := dump_mra(args, d.machine, mra_cfg, d.mra_xml, parent_names)
 				main_copied = dumped || main_copied
 				valid_setnames = append( valid_setnames, d.machine.Name )
+			}
+			if !args.SkipPocket {
+				pocket_add(d.machine, mra_cfg, args, d.def_dipsw, d.coremod, d.mra_xml )
 			}
 		} else {
 			fmt.Printf("Skipping derivative '%s' as parent '%s' was not found\n",
@@ -170,6 +176,12 @@ func dump_setnames( corefolder string, sn []string ) {
 }
 
 func skip_game(machine *MachineXML, mra_cfg Mame2MRA, args Args) bool {
+	if args.MainOnly && machine.Cloneof!="" && !slices.Contains( mra_cfg.Parse.Main_setnames, machine.Name ){
+		if args.Verbose {
+			fmt.Println("Skipping ", machine.Description, "for it is not the main version of the game")
+		}
+		return true
+	}
 	if mra_cfg.Parse.Skip.Bootlegs &&
 		strings.Index(
 			strings.ToLower(machine.Description), "bootleg") != -1 {
@@ -201,16 +213,6 @@ func skip_game(machine *MachineXML, mra_cfg Mame2MRA, args Args) bool {
 		return true
 	}
 	// Parse Must-be conditions
-	device_ok := len(mra_cfg.Parse.Mustbe.Devices) == 0
-device_check:
-	for _, each := range mra_cfg.Parse.Mustbe.Devices {
-		for _, check := range machine.Devices {
-			if each == check.Name {
-				device_ok = true
-				break device_check
-			}
-		}
-	}
 	// Check must-be machine names
 	machine_ok := len(mra_cfg.Parse.Mustbe.Machines) == 0
 	for _, each := range mra_cfg.Parse.Mustbe.Machines {
@@ -222,7 +224,7 @@ device_check:
 			break
 		}
 	}
-	return !(device_ok && machine_ok)
+	return !machine_ok
 }
 
 func rm_spsp(a string) string {
@@ -314,26 +316,7 @@ func dump_mra(args Args, machine *MachineXML, mra_cfg Mame2MRA, mra_xml *XMLNode
 	b.WriteString(mra_xml.Dump())
 	b.WriteString("\n")
 	os.WriteFile(fname, []byte(b.String()), 0666)
-	main_copied := false
-	if main_mra {
-		// Look for the RBF name
-		rbf_name := mra_xml.FindNode("rbf").text // it must find it
-		rbf_name = rbf_name[2:]                  // deletes the initial jt
-		if args.JTbin {
-			fname = os.Getenv("JTBIN")
-		} else {
-			fname = filepath.Join(os.Getenv("JTROOT"), "release")
-		}
-		fname = filepath.Join(fname, "mister", rbf_name, "releases")
-		os.MkdirAll(fname, 0775)
-		fname = filepath.Join(fname, fix_filename(game_name)+".mra")
-		if args.Verbose {
-			fmt.Println("Creating ", fname)
-		}
-		os.WriteFile(fname, []byte(b.String()), 0666)
-		main_copied = true
-	}
-	return main_copied
+	return main_mra
 }
 
 func mra_disclaimer(machine *MachineXML, year string) string {
@@ -464,7 +447,7 @@ func make_mra(machine *MachineXML, cfg Mame2MRA, args Args) (*XMLNode, string, i
 	n.AddAttr("twitter", "@topapate")
 	root.AddNode("name", mra_name(machine, cfg)) // machine.Description)
 	root.AddNode("setname", machine.Name)
-	set_rbfname(&root, machine, cfg, args)
+	corename := set_rbfname(&root, machine, cfg, args).text[2:] // corename = RBF, skipping the JT part
 	root.AddNode("mameversion", Mame_version())
 	root.AddNode("year", machine.Year)
 	root.AddNode("manufacturer", machine.Manufacturer)
@@ -504,10 +487,12 @@ func make_mra(machine *MachineXML, cfg Mame2MRA, args Args) (*XMLNode, string, i
 	// ROM load
 	make_ROM(&root, machine, cfg, args)
 	// Beta
-	if args.Beta {
+	if betas.All.IsBetaFor(corename,"mister") {
 		n := root.AddNode("rom").AddAttr("index", "17")
-		n.AddAttr("zip", "jtbeta.zip").AddAttr("md5", "None")
-		n.AddNode("part").AddAttr("name", "beta.bin")
+		// MiSTer makes a mess of md5 calculations, so I am not using that
+		n.AddAttr("zip", "jtbeta.zip").AddAttr("md5", "None").AddAttr("asm_md5", betas.Md5sum)
+		m := n.AddNode("part").AddAttr("name", "beta.bin")
+		m.AddAttr("crc",betas.Crcsum)
 	}
 	if !cfg.Cheat.Disable {
 		skip := false
@@ -533,10 +518,10 @@ func make_mra(machine *MachineXML, cfg Mame2MRA, args Args) (*XMLNode, string, i
 			filename = args.Def_cfg.Core + ".s"
 		}
 		asmhex := picoasm(filename, cfg, args) // the filename is ignored for betas
-		if asmhex != nil && len(asmhex) > 0 && (!skip || args.Beta) {
+		if asmhex != nil && len(asmhex) > 0 && !skip {
 			root.AddNode("Machine code for the Picoblaze CPU").comment = true
 			n := root.AddNode("rom").AddAttr("index", "16")
-			if args.JTbin || args.Beta {
+			if args.JTbin {
 				n.AddNode("part").SetText(hexdump(asmhex, 32)).indent_txt = true
 			} else {
 				re := regexp.MustCompile("\\..*$")
@@ -645,11 +630,11 @@ func make_buttons(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
 			}
 		}
 	}
-	pad := "Y,X,B,A,R,L,"
+	pad := "A,B,X,Y,L,R,"
 	for k := len(buttons); k < 6 && k < cfg.Buttons.Core; k++ {
 		buttons_str += "-,"
 	}
-	pad = pad[0 : cfg.Buttons.Core*2]
+	pad = pad[0 : len(buttons)*2]
 	buttons_str += "Start,Coin,Core credits"
 	n.AddAttr("names", buttons_str)
 	n.AddAttr("default", pad+"Start,Select,-")
@@ -684,7 +669,7 @@ func make_coreMOD(root *XMLNode, machine *MachineXML, cfg Mame2MRA) int {
 func make_devROM(root *XMLNode, machine *MachineXML, cfg Mame2MRA, pos *int) {
 	for _, dev := range machine.Devices {
 		if strings.Contains(dev.Name, "fd1089") {
-			reg_cfg := find_region_cfg(machine, "fd1089", cfg)
+			reg_cfg := find_region_cfg(machine, "fd1089", cfg, true)
 			if delta := fill_upto(pos, reg_cfg.start, root); delta < 0 {
 				fmt.Printf(
 					"\tstart offset overcome by 0x%X while adding FD1089 LUT\n", -delta)
@@ -756,14 +741,14 @@ func (p *flag_info) Set(a string) error {
 }
 
 func parse_toml(args *Args) (mra_cfg Mame2MRA) {
-	macros := jtdef.Make_macros(args.Def_cfg)
+	macros := def.Make_macros(args.Def_cfg)
 	// fmt.Println(macros)
 	// Replaces words starting with $ with the corresponding macro
 	// and translates the hexadecimal 0x to 'h where needed
 	// This functionality is tagged for deletion in favour of
 	// using macro names as strings in the TOML, so the TOML
 	// syntax does not get broken
-	str := jtdef.Replace_Macros(args.Toml_path, macros)
+	str := def.Replace_Macros(args.Toml_path, macros)
 	str = Replace_Hex(str)
 	if args.Verbose {
 		fmt.Println("TOML file after replacing the macros:")
@@ -822,6 +807,11 @@ Set JTFRAME_HEADER=length in macros.def instead`)
 				os.Exit(1)
 			}
 			this.start = int(aux)
+			if args.Verbose {
+				fmt.Printf("Start in .ROM set to %X for region %s",this.start, this.Name)
+				if this.Rename!="" { fmt.Printf(" (%s)",this.Rename)}
+				fmt.Println()
+			}
 		}
 		if  this.Sort_even ||
 			this.Singleton || len(this.Ext_sort) > 0 ||

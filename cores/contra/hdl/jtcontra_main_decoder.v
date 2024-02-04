@@ -75,7 +75,7 @@ always @(*) begin // Decoder 007766 takes as inputs A[15:10] and A[6:5]
     out_cs      = A[15:10] == 6'b0000_00 && A[6:4]==1 && !RnW;  // 18-1F
 end
 
-always @(*) begin   // doesn't boot up if latched
+always @(*) begin
     case(1'b1)
         rom_cs:  cpu_din = rom_data;
         ram_cs:  cpu_din = ram_dout;

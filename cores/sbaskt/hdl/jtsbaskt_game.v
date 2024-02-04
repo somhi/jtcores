@@ -28,14 +28,14 @@ wire        V16;
 
 wire [ 3:0] pal_sel;
 wire        obj_frame;
-wire        cpu_cen;
 wire        cpu_rnw, cpu_irqn, cpu_nmin;
 wire        vscr_cs, vram_cs, objram_cs, flip;
-wire [ 7:0] vscr_dout, vram_dout, obj_dout, cpu_dout,
+wire [ 7:0] vscr_dout, vram_dout, obj_dout,
             debug_snd;
 wire        vsync60;
 
 wire        m2s_irq, m2s_data;
+reg         decode;
 
 assign { dipsw_b, dipsw_a } = dipsw[15:0];
 assign dip_flip = flip;
@@ -45,22 +45,28 @@ wire [ 7:0] nc, pre_data;
 
 always @(*) begin
     post_data = prog_data;
-    if( ioctl_addr[21:0] >= SCR_START && ioctl_addr[21:0]<PCM_START ) begin
+    if( prog_addr[21:0] >= (SCR_START>>1) && prog_addr[21:0]<(PCM_START>>1) ) begin
         post_data = { prog_data[3:0], prog_data[7:4] };
     end
+end
+
+always @(posedge clk) begin
+    if( header && prog_we && prog_addr[1:0]==0 ) decode <= prog_data[0];
 end
 
 `ifndef NOMAIN
 jtsbaskt_main u_main(
     .rst            ( rst24         ),
     .clk            ( clk24         ),        // 24 MHz
-    .cpu4_cen       ( cpu4_cen      ),
     .cpu_cen        ( cpu_cen       ),
+    .decode         ( decode        ),
     // ROM
     .rom_addr       ( main_addr     ),
     .rom_cs         ( main_cs       ),
     .rom_data       ( main_data     ),
-    .rom_ok         ( main_ok       ),
+    // RAM
+    .ram_dout       ( ram_dout      ),
+    .ram_we         ( ram_we        ),
     // cabinet I/O
     .cab_1p         ( cab_1p        ),
     .coin           ( coin          ),
@@ -127,6 +133,7 @@ jtsbaskt_snd u_sound(
     .snd        ( snd       ),
     .sample     ( sample    ),
     .peak       ( game_led  ),
+    .debug_bus  ( debug_bus ),
     .debug_view ( debug_snd )
 );
 `else

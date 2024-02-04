@@ -1,11 +1,11 @@
 package mra
 
 import (
-    "github.com/jotego/jtframe/jtdef"
+    "github.com/jotego/jtframe/def"
 )
 
 type Args struct {
-    Def_cfg                      jtdef.Config
+    Def_cfg                      def.Config
     Toml_path, Xml_path          string
     outdir, altdir               string
     cheatdir, pocketdir          string
@@ -16,7 +16,7 @@ type Args struct {
     SkipROM, Md5                 bool // By skipping the ROM generation,
         // the md5 will be set to None, unless Md5 is true
     Show_platform                bool
-    Beta                         bool
+    MainOnly,PrintNames          bool
     JTbin                        bool // copy to JTbin & disable debug features
     Author, URL                  string
     // private
@@ -118,6 +118,13 @@ type RegCfg struct {
     Files []MameROM // This replaces the information in mame.xml completely if present
 }
 
+func (this *RegCfg) EffName() string {
+    if this.Rename!="" {
+        return this.Rename
+    }
+    return this.Name
+}
+
 type RawData struct {
     Selectable
     Dev              string // required device name to apply these data, ignored if blank
@@ -127,14 +134,17 @@ type RawData struct {
 
 type HeaderCfg struct {
     Info    string
-    Len, Fill int
+    Fill    int
     Data   []RawData
+    // Offset in the ROM stream of each ROM region
     Offset struct {
         Bits    int
         Reverse bool
         Start   int // Start location for the offset table
         Regions []string
     }
+    // Filled automatically
+    Len int
 }
 
 type Info struct {
@@ -226,8 +236,10 @@ type Mame2MRA struct {
 
     ROM struct {
         Ddr_load bool
+        Firmware string     // Used for consoles by the Pocket target
         Regions  []RegCfg
         Order    []string
+        Carts    []string
         Remove   []string // Remove specific files from the dump
         // Splits break a file into chunks using the offset and length MRA attributes
         // Offset sets the break point, and Min_len the minimum length for each chunk

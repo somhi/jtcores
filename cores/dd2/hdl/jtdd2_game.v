@@ -33,7 +33,7 @@ wire       [ 7:0]  snd_latch;
 // DIP
 wire       [ 7:0]  dipsw_a, dipsw_b;
 // MCU
-wire               mcu_irqmain, mcu_halt, com_cs, mcu_nmi_set, mcu_ban;
+wire               mcu_irqmain, mcu_haltn, com_cs, mcu_nmi_set, mcu_ban;
 wire       [ 7:0]  mcu_ram;
 
 wire       [ 8:0]  scrhpos, scrvpos;
@@ -49,20 +49,18 @@ assign main_dout  = cpu_dout;
 assign oram_we    = oram_cs & ~cpu_wrn;
 assign cram_we    = {2{cram_cs & ~cpu_wrn}} & { ~main_addr[0], main_addr[0]};
 assign char_dout  = main_addr[0] ? char16_dout[7:0] : char16_dout[15:8];
+assign cpu_cen    = turbo ? cen6 : cen3;
 
 `ifndef NOMAIN
-wire main_cen = turbo ? 1'd1 : cen12;
-
 jtdd_main u_main(
     .clk            ( clk24         ),  // slower clock to ease synthesis
     .rst            ( rst24         ),
-    .cen12          ( main_cen      ),
     .cpu_cen        ( cpu_cen       ),
     .VBL            ( VBL           ),
     .IMS            ( IMS           ), // =VPOS[3]
     // MCU
     .mcu_irqmain    ( mcu_irqmain   ),
-    .mcu_halt       ( mcu_halt      ),
+    .mcu_haltn      ( mcu_haltn     ),
     .mcu_ban        ( mcu_ban       ),
     .com_cs         ( com_cs        ),
     .mcu_nmi_set    ( mcu_nmi_set   ),
@@ -99,7 +97,6 @@ jtdd_main u_main(
     .rom_cs         ( main_cs       ),
     .rom_addr       ( main_addr     ),
     .rom_data       ( main_data     ),
-    .rom_ok         ( main_ok       ),
     // DIP switches
     .dip_pause      ( dip_pause     ),
     .service        ( service       ),
@@ -140,7 +137,6 @@ assign mcu_rstb  = 1'b0;
     `endif
 `endif
 
-`ifndef NOMCU
 wire mcu_cen = turbo ? cen8 : cen4;
 
 jtdd2_sub u_sub(
@@ -157,35 +153,25 @@ jtdd2_sub u_sub(
     // CPU Interface
     .com_cs       (  com_cs          ),
     .mcu_nmi_set  (  mcu_nmi_set     ),
-    .mcu_halt     (  mcu_halt        ),
+    .mcu_halt     (  ~mcu_haltn      ),
     .mcu_irqmain  (  mcu_irqmain     ),
     .mcu_ban      (  mcu_ban         ),
     // PROM programming
     .rom_addr     (  mcu_addr        ),
     .rom_data     (  mcu_data        ),
     .rom_cs       (  mcu_cs          ),
-    .rom_ok       (  mcu_ok          )
+    .rom_ok       (  1'b1            )
 );
-`else
-reg    irqmain;
-assign mcu_irqmain = irqmain;
-assign mcu_ban = 1'b0;
-always @(posedge clk) irqmain <= mcu_nmi_set;
-wire shared_we = com_cs && !cpu_wrn;
-jtframe_ram #(.AW(9)) u_shared(
-    .clk    ( clk         ),
-    .cen    ( cpu_cen     ),
-    .data   ( cpu_dout    ),
-    .addr   ( cpu_AB[8:0] ),
-    .we     ( shared_we   ),
-    .q      ( mcu_ram     )
-);
-`endif
 
+/* verilator tracing_off */
 jtdd2_sound u_sound(
-    .clk         ( clk           ),
+    .clk         ( clk24         ),
     .rst         ( rst           ),
     .H8          ( H8            ),
+    .cen_fm      ( cen_fm        ),
+    .cen_fm2     ( cen_fm2       ),
+    .cen_snd     ( cen_snd       ),
+    .cen_oki     ( cen_oki       ),
     // communication with main CPU
     .snd_irq     ( snd_irq       ),
     .snd_latch   ( snd_latch     ),
@@ -193,7 +179,7 @@ jtdd2_sound u_sound(
     .rom_addr    ( snd_addr      ),
     .rom_cs      ( snd_cs        ),
     .rom_data    ( snd_data      ),
-    .rom_ok      ( snd_ok        ),
+    .rom_ok      ( 1'b1          ),
 
     .adpcm_addr  ( adpcm_addr    ),
     .adpcm_cs    ( adpcm_cs      ),
@@ -205,13 +191,12 @@ jtdd2_sound u_sound(
     .sample      ( sample        ),
     .peak        ( game_led      )
 );
-
-`ifndef NOVIDEO
+/* verilator tracing_off */
 jtdd_video u_video(
-    .clk          (  clk             ),
     .rst          (  rst             ),
+    .clk          (  clk             ),
+    .clk_cpu      (  clk24           ),
     .pxl_cen      (  pxl_cen         ),
-    .cen_Q        (  cpu_cen         ),
     .cpu_AB       (  cpu_AB          ),
     .pal_cs       (  pal_cs          ),
     .vram_cs      (  vram_cs         ),
@@ -260,13 +245,5 @@ jtdd_video u_video(
     .gfx_en       (  gfx_en          ),
     .debug_bus    ( debug_bus        )
 );
-`else
-assign red   = 4'd0;
-assign blue  = 4'd0;
-assign green = 4'd0;
-assign char_addr = 16'd0;
-assign scr_addr  = 17'd0;
-assign obj_addr  = 19'd0;
-`endif
 
 endmodule

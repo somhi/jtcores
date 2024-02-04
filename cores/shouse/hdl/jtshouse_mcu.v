@@ -21,10 +21,10 @@
 
 module jtshouse_mcu(
     input              clk,
+    input              game_rst,
     input              rstn,
     input              cen,
     input              lvbl,
-    input              hs,
 
     input       [8:0]  hdump,
 
@@ -32,6 +32,7 @@ module jtshouse_mcu(
     output             rnw,
     output reg         ram_cs,      // Tri port RAM
     input       [7:0]  ram_dout,
+    output             halted,      // signals an decoding error too
     // Ports
     // cabinet I/O
     input       [1:0]  cab_1p,
@@ -59,12 +60,12 @@ module jtshouse_mcu(
     input              pcm_ok,
     output             bus_busy,
 
-    output     signed [10:0] snd, // is it signed?
+    output     signed [10:0] snd,
 
     input      [ 7:0]  debug_bus
 );
 `ifndef NOMAIN
-wire        vma, irq_ack;
+wire        vma;
 reg         dip_cs, epr_cs, cab_cs, swio_cs, reg_cs,
             irq, lvbl_l;
 
@@ -79,8 +80,8 @@ reg  [ 2:0] bank;
 reg  [ 3:0] dipmx;
 reg  [ 1:0] pcm_msb;
 reg  [ 9:0] amp1, amp0;
-reg         hs_l;
 reg         init_done;
+wire        wr;
 
 function [1:0] gain( input [1:0] g);
     case( g )
@@ -90,8 +91,9 @@ function [1:0] gain( input [1:0] g);
     endcase
 endfunction
 
+assign rnw         = ~wr;
 assign bus_busy    = pcm_cs & ~pcm_ok;
-assign eerom_we    = epr_cs & ~rnw;
+assign eerom_we    = epr_cs & wr;
 assign pcm_addr    = {bank, pcm_msb, A[15],A[13:0]};
 assign mcu_addr    = A[10:0]; // used to access both Tri RAM and EEROM
 assign p1_din      = { 1'b1, service, dip_test, coin, 3'd0 };
@@ -109,7 +111,7 @@ always @(*) begin
     // see https://github.com/jotego/jtcores/issues/410
     ram_cs  = vma &&  A[15:12]==4'hc && !A[11] /*&& (A[10:0]!=0 || rnw || !init_done)*/;    // c000~c7ff
     epr_cs  = vma &&  A[15:12]==4'hc &&  A[11];    // c800~cfff
-    reg_cs  = vma &&  A[15:12]==4'hd && !rnw;
+    reg_cs  = vma &&  A[15:12]==4'hd && wr;
     dip_cs  = vma && swio_cs && A[11:10]==0;
     cab_cs  = vma && swio_cs && A[11:10]==1;
 end
@@ -131,7 +133,7 @@ always @(posedge clk) begin
 end
 
 jtframe_dcrm #(.SW(11)) u_dcrm(
-    .rst        ( ~rstn     ),
+    .rst        ( game_rst  ),
     .clk        ( clk       ),
     .sample     ( sample    ),
     .din        ( mix       ),
@@ -141,28 +143,25 @@ jtframe_dcrm #(.SW(11)) u_dcrm(
 always @(posedge clk, negedge rstn ) begin
     if( !rstn ) begin
         bank     <= 0;
-        dac1     <= 0;
-        dac0     <= 0;
+        dac1     <= 8'h80;
+        dac0     <= 8'h80;
         cab_dout <= 0;
         irq      <= 0;
         lvbl_l   <= 0;
-        hs_l     <= 0;
-        mix      <= 0;
+        mix      <= 11'h100;
         init_done<= 0;
     end else begin
         lvbl_l <= lvbl;
-        hs_l   <= hs;
-        if( lvbl_l && !lvbl) begin
-            irq <= 1;
-        end
-        if( hdump=='ha1 ) irq <= 0; // 31.2us width measure on the PCB
+        // The IRQ is held until VB ends or the CPU acknowledges it with a write at Fxxx
+        if( !lvbl && lvbl_l         ) irq <= 1;
+        if(  lvbl || &{A[15:12],wr} ) irq <= 0; // typ 31.2us width measure on the PCB
         amp1 <= dac1 * gain(gain1);
         amp0 <= dac0 * gain(gain0);
         mix  <= {1'b0, amp1}+{1'b0, amp0};
         dipmx<= A[1] ? dipsw[7:4] : dipsw[3:0];
         cab_dout <= A[0] ? { cab_1p[1], joystick2 }:
                            { cab_1p[0], joystick1 };
-        if( ram_cs && A[10:0]==0 && !rnw && cen ) init_done <= mcu_dout=='ha6;
+        if( ram_cs && A[10:0]==0 && wr && cen ) init_done <= mcu_dout=='ha6;
         if( reg_cs ) case(A[11:10])
             0: dac0 <= mcu_dout;
             1: dac1 <= mcu_dout;
@@ -181,18 +180,19 @@ always @(posedge clk, negedge rstn ) begin
         endcase
     end
 end
-
-jt63701v #(.ROMW(12),.SLOW_FRC(2)) u_63701(
+/* verilator tracing_off */
+jtframe_6801mcu #(.ROMW(12),.SLOW_FRC(2),.MODEL("HD63701V")) u_63701(
     .rst        ( ~rstn         ),
     .clk        ( clk           ),
     .cen        ( cen           ),
 
     // Bus
-    .rnw        ( rnw           ),
+    .wr         ( wr            ),
     .x_cs       ( vma           ),
-    .A          ( A             ),
+    .addr       ( A             ),
     .xdin       ( mcu_din       ),
     .dout       ( mcu_dout      ),
+    .ba         ( halted        ),
 
     // interrupts
     .irq        ( irq           ),
@@ -210,11 +210,10 @@ jt63701v #(.ROMW(12),.SLOW_FRC(2)) u_63701(
     // ROM
     .rom_cs     (               ),
     .rom_addr   ( rom_addr      ),
-    .rom_data   ( rom_data      ),
-    .irq_ack    ( irq_ack       )
+    .rom_data   ( rom_data      )
 );
 
-jtframe_prom #(.AW(12)) u_prom(
+jtframe_prom #(.AW(12),.SIMFILE("../../firmware/triram-mcu.bin")) u_prom(
     .clk    ( clk       ),
     .cen    ( 1'b1      ),
     .data   ( prog_data ),
@@ -225,7 +224,8 @@ jtframe_prom #(.AW(12)) u_prom(
 );
 `else
 assign mcu_dout = 0;
-assign rnw      = 0;
+assign rnw      = 1;
+assign halted   = 0;
 assign mcu_addr = 0;
 assign eerom_we = 0;
 assign pcm_addr = 0;

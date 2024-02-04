@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"strconv"
@@ -108,6 +109,8 @@ type MachineXML struct {
 		} `xml:"control"`
 	} `xml:"input"`
 	Dipswitch []MachineDIP `xml:"dipswitch"`
+	// exclude pinballs
+	Ismechanical bool `xml:"ismechanical,attr"`
 }
 
 type MameXML struct {
@@ -123,6 +126,7 @@ type ParseCfg struct {
 		Setname string
 		Name    string
 	}
+	Older	int	// minimum year allow to parse
 	Skip struct {
 		Selectable
 		Pocket		 Selectable
@@ -150,6 +154,15 @@ var mame_version string = "0.232"
 
 func Mame_version() string {
 	return "0" + mame_version[2:] // converts 0.232 to 0232
+}
+
+func (this *MachineXML)Dial() bool {
+	for _, each := range this.Input.Control {
+		if strings.ToLower(each.Type)=="dial" {
+			return true
+		}
+	}
+	return false
 }
 
 func FamilyName(machine *MachineXML) string {
@@ -202,7 +215,8 @@ loop_machines:
 						for _, v := range se.Attr {
 							if v.Name.Local == "sourcefile" {
 								for _, each := range cfg.Sourcefile {
-									if filepath.Base(v.Value) == each {
+									re := regexp.MustCompile(each)
+									if re.MatchString(filepath.Base(v.Value)) {
 										dump = true
 									}
 								}
@@ -215,8 +229,26 @@ loop_machines:
 					}
 					if dump {
 						ex.decoder.DecodeElement(&machine, &se)
-						tidyup(&machine)
-						break loop_machines
+						device_ok := len(cfg.Mustbe.Devices) == 0
+					device_check:
+						for _, each := range cfg.Mustbe.Devices {
+							re := regexp.MustCompile(each)
+							for _, check := range machine.Devices {
+								if re.MatchString(check.Name) {
+									device_ok = true
+									break device_check
+								}
+							}
+						}
+						year, e := strconv.Atoi( strings.ReplaceAll(machine.Year,"?","0"))
+						if e!=nil { year=2100 }
+						if device_ok && !machine.Ismechanical && year>=cfg.Older {
+							tidyup(&machine)
+							break loop_machines
+						} else {
+							machine = MachineXML{}
+							dump = false
+						}
 					}
 				}
 			}

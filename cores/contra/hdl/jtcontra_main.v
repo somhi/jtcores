@@ -25,7 +25,7 @@
 module jtcontra_main(
     input               clk,        // 24 MHz
     input               rst,
-    input               cen12,
+    input               cen3,
     output              cpu_cen,
     // communication with sound CPU
     output              snd_irq,
@@ -67,7 +67,10 @@ module jtcontra_main(
 parameter  GAME=0;
 localparam RAM_AW = GAME==0 ? 12 : 13;
 
-wire [ 7:0] ram_dout, cpu_din;
+wire [ 7:0] ram_dout;
+/* verilator lint_off UNOPTFLAT */
+wire [ 7:0] cpu_din;
+/* verilator lint_on UNOPTFLAT */
 wire [15:0] A;
 wire        RnW, irq_n, nmi_n, irq_ack;
 wire        irq_trigger, nmi_trigger;
@@ -84,7 +87,6 @@ generate
             jtcontra_main_decoder u_decoder(
                 .clk            ( clk           ),        // 24 MHz
                 .rst            ( rst           ),
-                //.cen12          ( cen12         ),
                 .cpu_cen        ( cpu_cen       ),
                 .A              ( A             ),
                 .VMA            ( VMA           ),
@@ -128,7 +130,6 @@ generate
             jtcomsc_main_decoder u_decoder(
                 .clk            ( clk           ),        // 24 MHz
                 .rst            ( rst           ),
-                //.cen12          ( cen12         ),
                 .cpu_cen        ( cpu_cen       ),
                 .A              ( A             ),
                 .VMA            ( VMA           ),
@@ -235,10 +236,10 @@ jtframe_ff u_ff_nmi(
     .sigedge  ( nmi_trigger )     // signal whose edge will trigger the FF
 );
 
-jtframe_sys6809 #(.RAM_AW(RAM_AW)) u_cpu(
+jtframe_sys6809 #(.RAM_AW(RAM_AW),.CENDIV(0)) u_cpu(
     .rstn       ( ~rst      ),
     .clk        ( clk       ),
-    .cen        ( cen12     ),   // This is normally the input clock to the CPU
+    .cen        ( cen3      ),   // This is normally the input clock to the CPU
     .cpu_cen    ( cpu_cen   ),   // 1/4th of cen -> 3MHz
 
     // Interrupts

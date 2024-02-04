@@ -17,94 +17,7 @@
     Date: 28-1-2020 */
 
 module jtcps1_game(
-    input           rst,
-    input           clk,      // SDRAM
-    input           rst48,    // 48   MHz
-    input           clk48,    // 48   MHz
-    `ifdef JTFRAME_CLK96
-    input           rst96,    // 96   MHz
-    input           clk96,    // 96   MHz
-    `endif
-    output          pxl2_cen,   // 12   MHz
-    output          pxl_cen,    //  6   MHz
-    output   [7:0]  red,
-    output   [7:0]  green,
-    output   [7:0]  blue,
-    output          LHBL,
-    output          LVBL,
-    output          HS,
-    output          VS,
-    // cabinet I/O
-    input   [ 3:0]  cab_1p,
-    input   [ 3:0]  coin,
-    input   [ 9:0]  joystick1,
-    input   [ 9:0]  joystick2,
-    input   [ 9:0]  joystick3,
-    input   [ 9:0]  joystick4,
-    input   [ 1:0]  dial_x,
-    input   [ 1:0]  dial_y,
-    // SDRAM interface
-    input           ioctl_rom,
-    output          dwnld_busy,
-
-    // Bank 0: allows R/W
-    output   [21:0] ba0_addr,
-    output   [21:0] ba1_addr,
-    output   [21:0] ba2_addr,
-    output   [21:0] ba3_addr,
-    output   [ 3:0] ba_rd,
-    output   [ 3:0] ba_wr,
-    output   [15:0] ba0_din,
-    output   [ 1:0] ba0_dsn,
-    output   [15:0] ba1_din,
-    output   [ 1:0] ba1_dsn,
-    output   [15:0] ba2_din,
-    output   [ 1:0] ba2_dsn,
-    output   [15:0] ba3_din,
-    output   [ 1:0] ba3_dsn,
-    input    [ 3:0] ba_ack,
-    input    [ 3:0] ba_dst,
-    input    [ 3:0] ba_dok,
-    input    [ 3:0] ba_rdy,
-
-    input   [15:0]  data_read,
-
-    // ROM LOAD
-    input   [25:0]  ioctl_addr,
-    input   [ 7:0]  ioctl_dout,
-    input           ioctl_wr,
-    output  [ 7:0]  ioctl_din,
-    input           ioctl_ram, // 0 - ROM, 1 - RAM(EEPROM)
-    output  [21:0]  prog_addr,
-    output  [15:0]  prog_data,
-    output  [ 1:0]  prog_mask,
-    output  [ 1:0]  prog_ba,
-    output          prog_we,
-    output          prog_rd,
-    input           prog_ack,
-    input           prog_dok,
-    input           prog_dst,
-    input           prog_rdy,
-    // DIP switches
-    input   [31:0]  status,     // only bits 31:16 are looked at
-    input           service,
-    input           tilt,
-    input           dip_pause,
-    inout           dip_flip,
-    input           dip_test,
-    input   [ 1:0]  dip_fxlevel, // Not a DIP on the original PCB
-    input   [31:0]  dipsw,
-    // Sound output
-    output  signed [15:0] snd_left,
-    output  signed [15:0] snd_right,
-    output          sample,
-    input           enable_psg,
-    input           enable_fm,
-    output          game_led,
-    // Debug
-    input   [3:0]   gfx_en,
-    input   [7:0]   debug_bus,
-    output  [7:0]   debug_view
+    `include "jtframe_game_ports.inc" // see $JTFRAME/hdl/inc/jtframe_game_ports.inc
 );
 
 wire        clk_gfx, rst_gfx;
@@ -156,10 +69,10 @@ assign { dipsw_c, dipsw_b, dipsw_a } = ~24'd0;
 `endif
 
 wire [ 1:0] dsn;
-wire        cen16, cen12, cen8, cen10b;
+wire        cen10b;
 wire        cpu_cen, cpu_cenb;
 wire        charger;
-wire        turbo, pcmfilter_en, video_flip;
+wire        turbo, video_flip;
 
 `ifdef JTCPS_TURBO
 assign turbo = 1;
@@ -171,50 +84,22 @@ assign turbo = 1;
     `endif
 `endif
 
-assign pcmfilter_en = status[1];
 assign debug_view   = { 7'd0, dump_flag };
 assign ba1_din=0, ba2_din=0, ba3_din=0,
        ba1_dsn=3, ba2_dsn=3, ba3_dsn=3;
 
-// CPU clock enable signals come from 48MHz domain
-jtframe_cen48 u_cen48(
-    .clk        ( clk48         ),
-    .cen16      ( cen16         ),
-    .cen12      ( cen12         ),
-    .cen8       ( cen8          ),
-    .cen6       (               ),
-    .cen4       (               ),
-    .cen4_12    (               ),
-    .cen3       (               ),
-    .cen3q      (               ),
-    .cen1p5     (               ),
-    // 180 shifted signals
-    .cen16b     (               ),
-    .cen12b     (               ),
-    .cen6b      (               ),
-    .cen3b      (               ),
-    .cen3qb     (               ),
-    .cen1p5b    (               )
+jtframe_cen96 u_pxl_cen(
+    .clk    ( clk96     ),    // 96 MHz
+    .cen16  ( pxl2_cen  ),
+    .cen12  (           ),
+    .cen8   ( pxl_cen   ),
+    // Unused:
+    .cen6   (           ),
+    .cen6b  (           )
 );
+assign clk_gfx = clk96;
+assign rst_gfx = rst96;
 
-`ifdef JTFRAME_CLK96
-    jtframe_cen96 u_pxl_cen(
-        .clk    ( clk96     ),    // 96 MHz
-        .cen16  ( pxl2_cen  ),
-        .cen12  (           ),
-        .cen8   ( pxl_cen   ),
-        // Unused:
-        .cen6   (           ),
-        .cen6b  (           )
-    );
-    assign clk_gfx = clk96;
-    assign rst_gfx = rst96;
-`else
-    assign pxl2_cen = cen16;
-    assign pxl_cen  = cen8;
-    assign clk_gfx = clk;
-    assign rst_gfx = rst;
-`endif
 
 localparam REGSIZE=24;
 
@@ -222,7 +107,7 @@ localparam REGSIZE=24;
 wire busreq_cpu = busreq & ~turbo;
 wire busack_cpu;
 assign busack = busack_cpu | turbo;
-
+/* verilator tracing_off */
 `ifndef NOMAIN
 jtcps1_main u_main(
     .rst        ( rst48             ),
@@ -302,7 +187,7 @@ always @(posedge clk_gfx) begin
 end
 
 assign dip_flip = video_flip;
-
+/* verilator tracing_off */
 jtcps1_video #(REGSIZE) u_video(
     .rst            ( rst_video     ),
     .clk            ( clk_gfx       ),
@@ -460,19 +345,10 @@ reg [3:0] rst_snd;
 always @(posedge clk) begin
     rst_snd <= { rst_snd[2:0], rst48 };
 end
-
+/* verilator tracing_off */
 jtcps1_sound u_sound(
     .rst            ( rst_snd[3]    ),
     .clk            ( clk48         ),
-
-    .enable_adpcm   ( enable_psg    ),
-    .enable_fm      ( enable_fm     ),
-    `ifdef MISTER
-        .fxlevel    ( dip_fxlevel   ),
-    `else
-        .fxlevel    ( 2'd2          ), // not enough bits in MiST's OSD
-    `endif
-    .pcmfilter_en   ( pcmfilter_en  ),
 
     // Interface with main CPU
     .snd_latch0     ( snd_latch0    ),
@@ -494,7 +370,8 @@ jtcps1_sound u_sound(
     .left           ( snd_left      ),
     .right          ( snd_right     ),
     .sample         ( sample        ),
-    .peak           ( game_led      )
+    .peak           ( game_led      ),
+    .debug_bus      ( debug_bus     )
 );
 `else
 assign snd_addr   = 0;
@@ -511,7 +388,7 @@ reg rst_sdram;
 always @(posedge clk) rst_sdram <= rst;
 
 wire nc0, nc1, nc2, nc3;
-
+/* verilator tracing_on */
 jtcps1_sdram #(.REGSIZE(REGSIZE)) u_sdram (
     .rst         ( rst_sdram     ),
     .clk         ( clk           ),

@@ -75,16 +75,16 @@ always @(*) begin
     endcase
 end
 
-always @(posedge clk) begin
+always @(*) begin
     case( A[4:2] )
         0:  case( A[1:0] )
-                0: port_in <= {2'b11, joystick1[5:4], joystick1[2], joystick1[3], joystick1[0], joystick1[1]};
-                1: port_in <= {2'b11, joystick2[5:4], joystick2[2], joystick2[3], joystick2[0], joystick2[1]};
-                2: port_in <= {2'b11, joystick2[6],   joystick1[6], dipsw_c[3:0] };
-                3: port_in <= {3'b111, cab_1p, service, coin };
+                0: port_in = {2'b11, joystick1[5:4], joystick1[2], joystick1[3], joystick1[0], joystick1[1]};
+                1: port_in = {2'b11, joystick2[5:4], joystick2[2], joystick2[3], joystick2[0], joystick2[1]};
+                2: port_in = {2'b11, joystick2[6],   joystick1[6], dipsw_c[3:0] };
+                3: port_in = {3'b111, cab_1p, service, coin };
             endcase
-        1: port_in <= A[0] ? dipsw_a : dipsw_b;
-        default: port_in <= 8'hFF;
+        1: port_in = A[0] ? dipsw_a : dipsw_b;
+        default: port_in = 8'hFF;
     endcase
 end
 

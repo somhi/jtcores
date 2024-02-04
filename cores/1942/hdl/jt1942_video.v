@@ -22,6 +22,9 @@ module jt1942_video(
     input               cen6,
     input               cen3,
     input               cpu_cen,
+
+    input       [ 1:0]  game_id,
+
     input       [10:0]  cpu_AB,
     output      [ 8:0]  V,
     output      [ 8:0]  H,
@@ -32,11 +35,12 @@ module jt1942_video(
     input               pause,
     // CHAR
     input               char_cs,
-    output      [ 7:0]  chram_dout,
     output      [11:0]  char_addr,
     input       [15:0]  char_data,
     output              char_busy,
     input               char_ok,
+    output      [10:1]  tmap_addr,
+    input       [15:0]  tmap_dout,
     // SCROLL - ROM
     input               scr_cs,
     output              scr_busy,
@@ -62,7 +66,7 @@ module jt1942_video(
     output      [3:0]   blue,
     // PROM access
     input       [7:0]   prog_addr,
-    input       [3:0]   prog_din,
+    input       [7:0]   prog_din,
     input               prom_char_we,
     input               prom_d1_we,
     input               prom_d2_we,
@@ -75,17 +79,22 @@ module jt1942_video(
     input       [3:0]   gfx_en
 );
 
-`ifdef VULGUS
-localparam VULGUS = 1'b1;
-`else
-localparam VULGUS = 1'b0;
-`endif
-
+`include "1942.vh"
 localparam COFFSET = 9'd5;
 localparam SOFFSET = 9'd5;
 
-wire [3:0] char_pxl, obj_pxl;
-wire       preLHBL, preLVBL, LHBL_obj, HINIT;
+reg         vulgus, hige;
+wire        preLHBL, preLVBL, LHBL_obj, HINIT;
+wire [ 3:0] char_pxl, obj_pxl;
+wire [ 7:0] char_prom;
+wire [ 8:0] aux_AB = cpu_AB[8:0]-9'h80;
+wire [ 6:0] obj_AB = hige ? aux_AB[8:2] :cpu_AB[6:0];
+wire [15:0] char_sorted;
+
+always @(posedge clk ) begin
+    hige   <= game_id==HIGEMARU;
+    vulgus <= game_id==VULGUS;
+end
 
 jtgng_timer u_timer(
     .clk       ( clk      ),
@@ -102,59 +111,57 @@ jtgng_timer u_timer(
     .LVBL_obj  (          )
 );
 
-jtgng_char #(
-    .HOFFSET ( COFFSET ),
-    .ROM_AW  ( 12      ),
-    .IDMSB1  (  7      ),
-    .IDMSB0  (  7      ),
-    .VFLIP   (  6      ),
-    .PALW    (  6      ),
-    .HFLIP_EN(  0      ),   // 1942 does not have character H flip
-    .PALETTE (  1      ),
-    .PALETTE_SIMFILE( "../../../rom/1942/sb-0.f1" )
-) u_char (
+// Higemaru only uses 5 bits for char palette. The other games use 6 bits.
+// in order to share the module, the same data is written in both halves of the
+// palette PROM. Higemaru writes bit 6 during hi-score entry and does not
+// clear it afterwards. See https://github.com/jotego/jtcores/issues/466
+
+assign char_sorted = { char_data[8+:4],char_data[0+:4], char_data[12+:4],char_data[4+:4] };
+assign char_busy   = H[2:1]!=3 && char_cs;
+
+jtframe_tilemap #(.CW(9),.BPP(2),.XOR_HFLIP(1),.XOR_VFLIP(0))u_char(
+    .rst        ( rst           ),
     .clk        ( clk           ),
     .pxl_cen    ( cen6          ),
-    .AB         ( cpu_AB        ),
-    .V          ( V[7:0]        ),
-    .H          ( H[7:0]        ),
+
+    .vdump      ( V             ),
+    .hdump      ( H+9'd2        ),
+    .blankn     ( LVBL          ),
     .flip       ( flip          ),
-    .din        ( cpu_dout      ),
-    .dout       ( chram_dout    ),
-    .dseln      (               ),
-    // Bus arbitrion
-    .char_cs    ( char_cs       ),
-    .wr_n       ( wr_n          ),
-    .busy       ( char_busy     ),
-    // PROM access
-    .prog_addr  ( prog_addr     ),
-    .prog_din   ( prog_din      ),
-    .prom_we    ( prom_char_we  ),
-    // ROM
-    .char_addr  ( char_addr     ),
-    .rom_data   ( char_data     ),
-    .rom_ok     ( char_ok       ),
-    // Pixel output
-    .char_on    ( 1'b1          ),
-    .char_pxl   ( char_pxl      )
+
+    .vram_addr  ( tmap_addr     ),
+
+    .code       ({tmap_dout[15],tmap_dout[7:0]}),
+    .pal        ({tmap_dout[13]&~hige,tmap_dout[12:8]}),
+    .hflip      ( tmap_dout[13]& hige ),
+    .vflip      ( tmap_dout[14]       ),
+
+    .rom_addr   ( char_addr     ),
+    .rom_data   ( char_sorted   ),
+    .rom_cs     (               ),
+    .rom_ok     ( char_ok       ),      // ignored. It assumes that data is always right
+
+    .pxl        ( char_prom     )
 );
 
+jtframe_prom #(.AW(8),.DW(4)) u_chprom(
+    .clk    ( clk            ),
+    .cen    ( cen6           ),
+    .data   ( prog_din[3:0]  ),
+    .rd_addr( char_prom      ),
+    .wr_addr( prog_addr      ),
+    .we     ( prom_char_we   ),
+    .q      ( char_pxl       )
+);
+/* verilator tracing_off */
 `ifndef NOSCR
 wire [2:0] scr_col;
 wire [4:0] scr_pal;
 reg  [5:0] scr_pxl;
 
-// As scr_AB width differs depending on VULGUS
-// I think it is more clear to use `ifdef rather
-// than generate here.
-`ifdef VULGUS
-wire [9:0] scr_AB = cpu_AB[9:0];
-wire       scr_sel= cpu_AB[10];
-`else // 1942
-wire [8:0] scr_AB = { cpu_AB[9:5], cpu_AB[3:0] };
-wire       scr_sel= cpu_AB[4];
-`endif
-
+wire [9:0] scr_AB = vulgus ? cpu_AB[9:0] : {cpu_AB[9:5], 1'b0, cpu_AB[3:0]};
+wire       scr_sel= vulgus ? cpu_AB[10] : cpu_AB[4];
+// Higemaru does not use this layer
 jtgng_scroll #(
     .HOFFSET ( SOFFSET ),
     .ROM_AW  ( 14      ),
@@ -163,7 +170,7 @@ jtgng_scroll #(
     .VFLIP   ( 6       ),
     .HFLIP   ( 5       ),
     .PALW    ( 5       ),
-    .SCANW   ( VULGUS ? 10 : 9 )
+    .SCANW   ( 10      ) // only 9 for 1942
 ) u_scroll (
     .clk          ( clk           ),
     .pxl_cen      ( cen6          ),
@@ -209,7 +216,7 @@ jtframe_prom #(.AW(8),.DW(2),.SIMFILE("../../../rom/1942/sb-2.d1")) u_prom_d1(
 jtframe_prom #(.AW(8),.DW(4),.SIMFILE("../../../rom/1942/sb-3.d2")) u_prom_d2(
     .clk    ( clk            ),
     .cen    ( cen6           ),
-    .data   ( prog_din       ),
+    .data   ( prog_din[3:0]  ),
     .rd_addr( scr_pal_addr   ),
     .wr_addr( prog_addr      ),
     .we     ( prom_d2_we     ),
@@ -220,7 +227,7 @@ jtframe_prom #(.AW(8),.DW(4),.SIMFILE("../../../rom/1942/sb-3.d2")) u_prom_d2(
 jtframe_prom #(.AW(8),.DW(4),.SIMFILE("../../../rom/1942/sb-4.d6")) u_prom_d6(
     .clk    ( clk            ),
     .cen    ( cen6           ),
-    .data   ( prog_din       ),
+    .data   ( prog_din[3:0]  ),
     .rd_addr( {scr_pal, scr_col} ),
     .wr_addr( prog_addr      ),
     .we     ( prom_d6_we     ),
@@ -230,7 +237,7 @@ jtframe_prom #(.AW(8),.DW(4),.SIMFILE("../../../rom/1942/sb-4.d6")) u_prom_d6(
 reg [3:0] pre_scr_pxl;
 always @(*) begin
     pre_scr_pxl = scr_pal_addr[3:0];
-    scr_pxl     = VULGUS ? { scr_br[1:0], pre_scr_pxl } : scr_pal2;
+    scr_pxl     = vulgus ? { scr_br[1:0], pre_scr_pxl } : scr_pal2;
 end
 `else
 initial $display("INFO: scroll simulation omitted.");
@@ -241,12 +248,13 @@ assign scr_addr  = 14'd0;
 assign scr_pxl   = ~6'h0;
 `endif
 
-jt1942_obj #(.PXL_DLY(4),.LAYOUT( {1'b0,VULGUS} )) u_obj(
+jt1942_obj #(.PXL_DLY(4)) u_obj(
     .rst            ( rst       ),
     .clk            ( clk       ),
     .cen6           ( cen6      ),
     .cen3           ( cen3      ),
     .cpu_cen        ( cpu_cen   ),
+    .game_id        ( game_id   ),
     // screen
     .HINIT          ( HINIT     ),
     .LHBL           ( LHBL_obj  ),
@@ -255,10 +263,10 @@ jt1942_obj #(.PXL_DLY(4),.LAYOUT( {1'b0,VULGUS} )) u_obj(
     .H              ( H         ),
     .flip           ( flip      ),
     // CPU bus
-    .AB             ( cpu_AB[6:0] ),
-    .DB             ( cpu_dout    ),
-    .obj_cs         ( obj_cs      ),
-    .wr_n           ( wr_n        ),
+    .AB             ( obj_AB    ),
+    .DB             ( cpu_dout  ),
+    .obj_cs         ( obj_cs    ),
+    .wr_n           ( wr_n      ),
     // SDRAM interface
     .obj_addr       ( obj_addr    ),
     .obj_data       ( obj_data    ),
@@ -266,16 +274,16 @@ jt1942_obj #(.PXL_DLY(4),.LAYOUT( {1'b0,VULGUS} )) u_obj(
     // PROMs
     .prog_addr      ( prog_addr   ),
     .prom_pal_we    ( prom_obj_we ),
-    .prog_din       ( prog_din    ),
+    .prog_din       (prog_din[3:0]),
     // pixel output
     .obj_pxl        ( obj_pxl   )
 );
 
-`ifndef NOCOLMIX
-jt1942_colmix #(.VULGUS(VULGUS)) u_colmix (
+jt1942_colmix u_colmix (
     .rst        ( rst           ),
     .clk        ( clk           ),
     .cen6       ( cen6          ),
+    .game_id    ( game_id       ),
     .preLHBL    ( preLHBL       ),
     .preLVBL    ( preLVBL       ),
     .LVBL       ( LVBL          ),
@@ -299,10 +307,5 @@ jt1942_colmix #(.VULGUS(VULGUS)) u_colmix (
     .green      ( green         ),
     .blue       ( blue          )
 );
-`else
-assign  red = 4'd0;
-assign blue = 4'd0;
-assign green= 4'd0;
-`endif
 
 endmodule

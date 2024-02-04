@@ -17,59 +17,7 @@
     Date: 6-8-2021 */
 
 module jtexed_game(
-    input           rst,
-    input           clk,
-    output          pxl2_cen,   // 12   MHz
-    output          pxl_cen,    //  6   MHz
-    output   [3:0]  red,
-    output   [3:0]  green,
-    output   [3:0]  blue,
-    output          LHBL,
-    output          LVBL,
-    output          HS,
-    output          VS,
-    // cabinet I/O
-    input   [ 1:0]  cab_1p,
-    input   [ 1:0]  coin,
-    input   [ 5:0]  joystick1,
-    input   [ 5:0]  joystick2,
-    // SDRAM interface
-    input           ioctl_rom,
-    output          dwnld_busy,
-    output          sdram_req,
-    output  [21:0]  sdram_addr,
-    input   [15:0]  data_read,
-    input           data_dst,
-    input           data_rdy,
-    input           sdram_ack,
-    // ROM LOAD
-    input   [25:0]  ioctl_addr,
-    input   [ 7:0]  ioctl_dout,
-    input           ioctl_wr,
-    output reg [21:0]  prog_addr,
-    output  [ 7:0]  prog_data,
-    output  [ 1:0]  prog_mask,
-    output          prog_we,
-    output          prog_rd,
-    // DIP switches
-    input   [31:0]  status,     // only bits 31:16 are looked at
-    input           service,
-    input           tilt,
-    input           dip_pause,
-    input           dip_flip,
-    input           dip_test,
-    input   [ 1:0]  dip_fxlevel, // Not a DIP on the original PCB
-    input   [31:0]  dipsw,
-    // Sound output
-    output  signed [15:0] snd,
-    output          sample,
-    output          game_led,
-    input           enable_psg,
-    input           enable_fm,
-    // Debug
-    input   [3:0]   gfx_en,
-    input   [7:0]   debug_bus,
-    output  [7:0]   debug_view
+    `include "jtframe_game_ports.inc" // see $JTFRAME/hdl/inc/jtframe_game_ports.inc
 );
 
 // These signals are used by games which need
@@ -181,7 +129,10 @@ localparam        CPU_OFFSET  = 0,
 
 // Address transformations for optimum SDRAM download
 wire [21:0] pre_prog;
+reg  [21:0] prog_reg;
 reg  [25:0] pre_io;
+
+assign prog_addr = prog_reg;
 
 always @(*) begin
     // IOCTL
@@ -196,12 +147,12 @@ always @(*) begin
         pre_io = { ioctl_addr[25:8], ioctl_addr[5:1], ioctl_addr[7:6], ioctl_addr[0] };
 
     // Programming address
-    prog_addr = pre_prog;
+    prog_reg = pre_prog;
     if( pre_prog>=OBJ_OFFSET && pre_prog<PROM_OFFSET ) // OBJ
-        prog_addr = { pre_prog[21:6], pre_prog[4:1], pre_prog[5], pre_prog[0] };
+        prog_reg = { pre_prog[21:6], pre_prog[4:1], pre_prog[5], pre_prog[0] };
 
     if( pre_prog>=SCR1_OFFSET && pre_prog<SCR2_OFFSET ) // SCR1
-        prog_addr = { pre_prog[21:6], pre_prog[4:1], pre_prog[5], pre_prog[0] };
+        prog_reg = { pre_prog[21:6], pre_prog[4:1], pre_prog[5], pre_prog[0] };
 
 end
 
@@ -311,13 +262,13 @@ assign scr1_vpos   = 0;
 assign cpu_cen     = cen3;
 `endif
 
-`ifndef NOSOUND
 jt1942_sound #(.EXEDEXES(1)) u_sound (
     .rst            ( rst            ),
     .clk            ( clk            ),
     .cen3           ( cen3           ),
     .cen1p5         ( cen1p5         ),
     .sres_b         ( 1'b1           ),
+    .game_id        ( 2'd0           ),
     .main_dout      ( cpu_dout       ),
     .main_latch0_cs ( 1'b0           ),
     .main_latch1_cs ( 1'b0           ),
@@ -329,13 +280,13 @@ jt1942_sound #(.EXEDEXES(1)) u_sound (
     .rom_ok         ( snd_ok         ),
     .snd            ( snd            ),
     .sample         (                ),
-    .peak           ( game_led       )
+    .peak           ( game_led       ),
+    // pins used for Higemaru but unused here
+    .main_a0        ( 1'b0           ),
+    .main_ay0_cs    ( 1'b0           ),
+    .main_ay1_cs    ( 1'b0           ),
+    .main_wr_n      ( 1'b1           )
 );
-`else
-assign snd_addr = 15'd0;
-assign snd      = 16'd0;
-assign snd_cs   = 1'b0;
-`endif
 
 jtexed_video #(
     .OBJW   ( OBJW      )

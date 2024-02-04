@@ -9,6 +9,14 @@ names=[
     { names="Fire,Escape" }
 ]
 
+[header]
+info = """ Header to identify the game
+"""
+data = [
+    { setname="srumbler",  offset=0, data="00" }, # 00
+    { setnames=["srumbler2","srumbler3","rushcrsh"], offset=0, data="01" }, # 10
+]
+
 [dipsw]
 rename=[ {name="Bonus Life", to="Bonus"} ]
 

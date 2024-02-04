@@ -20,6 +20,7 @@ module jtaliens_main(
     input               rst,
     input               clk,
     input               cen_ref,
+    input               cen12,
     output              cpu_cen,
 
     input       [ 1:0]  cfg,
@@ -63,6 +64,13 @@ module jtaliens_main(
     // DIP switches
     input               dip_pause,
     input       [19:0]  dipsw,
+    // PMC chip
+    output              cpu2pmc_we,
+    input       [ 7:0]  pmc2main_data,
+    output              pmc_we,
+    output      [10:0]  pmc_addr,
+    input       [ 7:0]  pmc_dout,
+    output      [ 7:0]  pmc_din,
     // Debug
     input       [ 7:0]  debug_bus,
     output reg  [ 7:0]  st_dout
@@ -70,7 +78,7 @@ module jtaliens_main(
 `ifndef NOMAIN
 `include "jtaliens.inc"
 
-wire [ 7:0] Aupper;
+wire [ 7:0] Aupper, pmc_st;
 reg  [ 7:0] cpu_din, port_in;
 reg  [ 3:0] bank;
 reg  [ 3:0] eff_bank;
@@ -80,19 +88,21 @@ reg         ram_cs, banked_cs, io_cs, pal_cs, work, pmc_work,
             ioout, incs , chain, berr_l,
             e19_o16, e19_o12, objaux;
 wire        dtack;  // to do: add delay for io_cs
-reg         rst_cmb, eff_nmi_n;
-wire        norA65, norA43;
+reg         rst_cmb, eff_nmi_n,
+            pmc_start, pmc_cs, pmc_bk;
+wire        norA65, norA43, eff_firqn, pmc_out0;
 
-assign dtack   = ~rom_cs | rom_ok;
-assign ram_we  = ram_cs & cpu_we;
-assign pal_we  = pal_cs & cpu_we;
-assign norA65  = ~|A[6:5],
-       norA43  = ~|A[4:3];
+assign dtack     = ~rom_cs | rom_ok;
+assign ram_we    = ram_cs & cpu_we;
+assign pal_we    = pal_cs & cpu_we;
+assign norA65    = ~|A[6:5],
+       norA43    = ~|A[4:3];
+assign eff_firqn = cfg!=THUNDERX | pmc_out0; // only Thunder X uses FIRQ
 
 always @(*) begin
     case( debug_bus[1:0] )
         0: st_dout = Aupper;
-        1: st_dout = { 7'd0, berr_l };
+        1: st_dout = { 2'd0, pmc_st[1:0], 3'd0, berr_l };
         2: st_dout = pcbad[7:0];
         3: st_dout = pcbad[15:8];
     endcase
@@ -101,9 +111,9 @@ end
 always @(*) begin
     case( cfg )
         SCONTRA, THUNDERX: begin
-            rom_addr[17] = 0;
-            rom_addr[16] = banked_cs && eff_bank[3];
-            rom_addr[15] = (banked_cs && eff_bank[3]) ? eff_bank[2] : A[15];
+            rom_addr[17]    = 0;
+            rom_addr[16]    =  banked_cs && eff_bank[3];
+            rom_addr[15]    = (banked_cs && eff_bank[3]) ? eff_bank[2] : A[15];
             rom_addr[14:13] = banked_cs ? eff_bank[1:0] : A[14:13];
             rom_addr[12:0]  = A[12:0];
         end
@@ -128,6 +138,7 @@ wire bad_cs =
         { 3'd0, ram_cs     } +
         { 3'd0, io_cs      } +
         { 3'd0, objsys_cs  } +
+        { 3'd0, pmc_cs     } +
         { 3'd0, tilesys_cs } > 1;
 wire none_cs = ~|{ rom_cs, pal_cs, ram_cs, io_cs, objsys_cs, tilesys_cs };
 wire test_cs = A[15:0]>=16'h2000 && A[15:0]<16'h6000;
@@ -141,6 +152,7 @@ always @(*) begin
     objaux  = 0;
     e19_o16 = 0;
     e19_o12 = 0;
+    pmc_cs  = A[15:11]==5'b01011 && cfg==THUNDERX && pmc_work;
     case( cfg )
         CRIMFGHT: begin
             e19_o16   = init && A[15:11]==5'b01011;
@@ -164,7 +176,7 @@ always @(*) begin
                           | &A[9:7] & norA65 & incs );
         end
         SCONTRA, THUNDERX: begin
-            banked_cs  = A[15:13]==3 && init; // 6000-7FFFF
+            banked_cs  = A[15:13]==3 && (init || cfg==THUNDERX); // 6000-7FFFF
             pal_cs     = A[15:12]==5 && A[11] && ~work; // CRAMCS in sch
             ram_cs     = A[15:13]==2 && (!A[11] || !A[12]&&A[11] || work);
             ioout      = A[15:13]==0;
@@ -188,7 +200,8 @@ always @(*) begin
             tilesys_cs = A[15:14]==1 && ( !init || (!io_cs && !pal_cs && !objsys_cs));
         end
     endcase
-    rom_cs = !rst_cmb && (A[15] || banked_cs); // >=8000
+    rom_cs = !rst_cmb && (A[15] || banked_cs) && !cpu_we; // >=8000
+    if( pmc_cs ) {pal_cs,ram_cs}=0;
 end
 
 always @* begin
@@ -197,7 +210,8 @@ always @* begin
               io_cs      ? port_in   :    // io_cs must take precedence over tilesys_cs
               pal_cs     ? pal_dout  :
               tilesys_cs ? tilesys_dout :
-              objsys_cs  ? objsys_dout  : 8'hff;
+              objsys_cs  ? objsys_dout  :
+              pmc_cs     ? pmc2main_data: 8'hff;
 end
 
 always @(posedge clk, posedge rst) begin
@@ -215,8 +229,8 @@ always @(posedge clk, posedge rst) begin
         berr_l    <= 0;
     end else begin
         if( buserror ) berr_l <= 1;
-        eff_nmi_n <= cfg==ALIENS ? nmi_n : 1'b1;
-        eff_bank <= cfg==SCONTRA ? bank : Aupper[3:0]; // Only Super Contra uses a latch
+        eff_nmi_n <= (cfg==ALIENS || cfg==THUNDERX) ? nmi_n : 1'b1;
+        eff_bank  <= cfg==SCONTRA ? bank : Aupper[3:0]; // Only Super Contra uses a latch
         if( cfg==CRIMFGHT ) begin
             init <= Aupper[7];
             rmrd <= Aupper[6];
@@ -267,7 +281,7 @@ always @(posedge clk, posedge rst) begin
                         endcase
                     end
                     5: port_in <= A[0] ? dipsw[15:8] : dipsw[7:0];
-                    6: rmrd <= cpu_dout[0]; // To do: complete this case
+                    6: { pmc_start, pmc_bk, rmrd } <= cpu_dout[2:0];
                     default:;
                 endcase
             end
@@ -323,6 +337,26 @@ always @(posedge clk, posedge rst) begin
     end
 end
 
+jt052591 u_pmc(
+    .rst        ( rst       ),
+    .clk        ( clk       ),
+    .cen        ( cen12     ),
+
+    .cs         ( pmc_cs    ),
+    .cpu_we     ( cpu_we    ),
+    .cpu2ram_we ( cpu2pmc_we),
+
+    .ram_we     ( pmc_we    ),
+    .ram_addr   ( pmc_addr  ),
+    .ram_dout   ( pmc_dout  ),
+    .ram_din    ( pmc_din   ),
+
+    .bk         ( pmc_bk    ),     // 1=internal RAM, 0=external RAM
+    .out0       ( pmc_out0  ),     // connected to PCMFIRQ in Thunder Cross
+    .start      ( pmc_start ),     // triggers the programmed process
+    .st_dout    ( pmc_st    )
+);
+
 /* xverilator tracing_off */
 // there is a reset for the first 8 frames, skip it in sims
 // always @(posedge clk) rst_cmb <= rst `ifndef SIMULATION | rst8 `endif ;
@@ -337,12 +371,8 @@ jtkcpu u_cpu(
     .halt   ( berr_l    ),
     .dtack  ( dtack     ),
     .nmi_n  ( eff_nmi_n ),
-// `ifdef SIMULATION
-//     .irq_n  ( 1'b1      ),
-// `else
     .irq_n  ( irq_n | ~dip_pause ),
-// `endif
-    .firq_n ( 1'b1      ),
+    .firq_n ( eff_firqn ),
     .pcbad  ( pcbad     ),
     .buserror( buserror ),
 
@@ -352,7 +382,6 @@ jtkcpu u_cpu(
     .addr   ({Aupper, A}),
     .we     ( cpu_we    )
 );
-/* verilator tracing_on */
 `else
     assign cpu_cen  = 0;
     assign cpu_dout = 0;

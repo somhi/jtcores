@@ -23,10 +23,6 @@ module jtcps1_sound(
     // Interface with main CPU
     input         [ 7:0] snd_latch0,
     input         [ 7:0] snd_latch1,
-    input                enable_adpcm,
-    input                enable_fm,
-    input         [ 1:0] fxlevel,
-    input                pcmfilter_en,
 
     // ROM
     output    reg [15:0] rom_addr,
@@ -44,36 +40,28 @@ module jtcps1_sound(
     output signed [15:0] left,
     output signed [15:0] right,
     output               sample,
-    output reg           peak
+    output reg           peak,
+    input         [ 7:0] debug_bus
 );
 
-(*keep*) wire cen_fm, cen_fm2, cen_oki, nc, cpu_cen;
-wire signed [13:0] oki_pre, oki_pole;
-reg  signed [13:0] oki_mux;
-wire        [ 6:0] pole_a;
+localparam [7:0] FMGAIN = 8'h06;
+
+wire cen_fm, cen_fm2, cen_oki, nc, cpu_cen;
+wire signed [13:0] oki_pre, oki_pole; //, oki_dcrm;
 wire signed [15:0] adpcm_snd;
 wire signed [15:0] fm_left, fm_right;
 wire               peak_l, peak_r;
 wire               oki_sample;
+wire               pcm_en, fm_en;
+reg         [ 7:0] fmgain, pcmgain;
 
-localparam [7:0] FMGAIN = 8'h06;
-
-wire [7:0] fmgain  = enable_fm    ? FMGAIN  : 8'h0;
-reg  [7:0] pcmgain;
+assign pcm_en = 1; //~debug_bus[0];
+assign fm_en  = 1; //~debug_bus[1];
 
 always @(posedge clk) begin
     peak <= peak_r | peak_l;
-    if( enable_adpcm ) begin
-        case( fxlevel )
-            2'd0: pcmgain <= 8'h04;
-            2'd1: pcmgain <= 8'h08;
-            2'd2: pcmgain <= 8'h0C;
-            2'd3: pcmgain <= 8'h10;
-        endcase
-    end else begin
-        pcmgain <= 8'h0;
-    end
-    oki_mux <= pcmfilter_en ? oki_pole : oki_pre;
+    pcmgain <= pcm_en ? 8'h16 : 8'h0;
+    fmgain  <= fm_en ? FMGAIN  : 8'h0;
 end
 
 jtframe_mixer #(.W1(16),.WOUT(16)) u_left(
@@ -243,7 +231,7 @@ jtframe_z80_romwait u_cpu(
     .rom_cs     ( rom_cs      ),
     .rom_ok     ( rom_ok & rom_ok2     )
 );
-
+/* verilator tracing_off */
 jt51 u_jt51(
     .rst        ( rst       ), // reset
     .clk        ( clk       ), // main clock
@@ -265,9 +253,8 @@ jt51 u_jt51(
     .xleft      ( fm_left   ),
     .xright     ( fm_right  )
 );
-
+/* verilator tracing_on */
 assign adpcm_cs = 1'b1;
-assign pole_a = oki7 ? 7'd108 : 7'd104; // Pole at 770 Hz
 
 jt6295 #(.INTERPOL(1)) u_adpcm(
     .rst        ( rst       ),
@@ -286,12 +273,21 @@ jt6295 #(.INTERPOL(1)) u_adpcm(
     .sound      ( oki_pre   ),
     .sample     ( oki_sample)   // ~26kHz
 );
+/*
+jtframe_dcrm #(.SW(14),.SIGNED_INPUT(1))u_dcrm(
+    .rst        ( rst       ),
+    .clk        ( clk       ),
+    .sample     ( oki_sample),
+    .din        ( oki_pre   ),
+    .dout       ( oki_dcrm  )
+);*/
 
 jtframe_pole #(.WS(14)) u_pole(
     .rst        ( rst       ),
     .clk        ( clk       ),
     .sample     ( oki_sample),
-    .a          ( pole_a    ),
+    .a          ( 7'h40     ),
+    // .a          ( debug_bus[7:1]     ),
     .sin        ( oki_pre   ),
     .sout       ( oki_pole  )
 );
@@ -301,7 +297,7 @@ jtframe_uprate2_fir u_fir1(
     .clk        ( clk            ),
     .sample     ( oki_sample     ),
     .upsample   (                ), // ~52kHz, close to JT51's 55kHz
-    .l_in       ({oki_mux,2'd0}  ),
+    .l_in       ({oki_pole,2'd0} ),
     .r_in       (     16'd0      ),
     .l_out      ( adpcm_snd      ),
     .r_out      (                )

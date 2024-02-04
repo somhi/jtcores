@@ -200,6 +200,8 @@ always @(posedge clk, posedge rst) begin
             if( scr2hpos_cs && !RnW) scr2_hpos <= cpu_dout[8:0];
             if( scr2vpos_cs && !RnW) scr2_vpos <= cpu_dout[8:0];
         end else begin
+            scr2_hpos <= 0;
+            scr2_vpos <= 0;
             if( scr1hpos_cs ) begin
                 if(!UDSWn) scr1_hpos[15:8] <= cpu_dout[15:8];
                 if(!LDSWn) scr1_hpos[ 7:0] <= cpu_dout[ 7:0];
@@ -374,7 +376,7 @@ wire DTACKn;
 localparam [3:0] DIV_NUM= GAME==0 ? 4'd1 : 4'd5;
 localparam [4:0] DIV_DEN= GAME==0 ? 5'd4 : 5'd24;
 
-jtframe_68kdtack u_dtack( // cen = 12 or 10 MHz
+jtframe_68kdtack_cen u_dtack( // cen = 12 or 10 MHz
     .rst        ( rst        ),
     .clk        ( clk        ),
     .num        ( DIV_NUM    ),

@@ -23,7 +23,6 @@ module jtngp_scr #( parameter
     input             rst,
     input             clk,
     input             pxl_cen,
-    input             LHBL,
 
     input      [ 8:0] hdump,
     input      [ 7:0] vdump,
@@ -58,7 +57,11 @@ always @* begin
     veff = vdump + vpos;
     scan_addr = { veff[7:3], heff[7:3] };
 end
-
+`ifdef SIMULATION
+reg [15:0] chk_d=0;
+reg [ 9:0] chk_a=0;
+always @(posedge clk) if(we!=0) { chk_a, chk_d } <= { cpu_addr, cpu_dout & {{8{we[1]}},{8{we[0]}}} };
+`endif
 // 2048 bytes = 32x32 characters
 jtframe_dual_ram16 #(
     .AW         (  10         ),
@@ -89,13 +92,15 @@ always @(posedge clk, posedge rst) begin
         pal        <= 0;
         pxl_data   <= 0;
     end else if(pxl_cen) begin
-        if( heff[2:0]==0 ) begin
+        if( heff[1:0]==0 ) begin
             chram_addr <= { scan_dout[8:0], veff[2:0] ^ {3{scan_dout[14]}} };
             hflip0     <= scan_dout[15];
             pal0       <= scan_dout[13];
             pxl_data   <= chram_data;
             hflip      <= hflip0;
             pal        <= pal0;
+            if( !heff[2] )
+                pxl_data <= hflip ? {2{chram_data[15:8]}} : {2{chram_data[7:0]}};
         end else begin
             pxl_data   <= hflip ? pxl_data>>2 : pxl_data<<2;
         end

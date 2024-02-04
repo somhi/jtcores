@@ -2,17 +2,13 @@ package update
 
 import (
 	"bufio"
-	"bytes"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
-	"text/template"
-	"time"
 )
 
 type Customs map[string]string
@@ -21,11 +17,11 @@ type Groups map[string]string
 type Config struct {
 	Max_jobs            int
 	Git, Nohdmi   		  bool
-	Nosnd, Actions, Seed  bool
+	Nosnd, Seed  		    bool
 	Private,  Nodbg  		bool
-	Skip, SkipROM				bool
+	Skip, SkipROM, MainOnly	bool
 	Group, extra 		  	string
-	Beta, Stamp, Defs   string
+	Stamp, Defs   		string
 	cores               []string
 	CoreList            string
 	Targets             map[string]bool
@@ -120,73 +116,6 @@ func parse_cfgfile(cfg *Config, file *os.File) {
 	}
 }
 
-func update_actions(jtroot string, cfg Config) {
-	folder := filepath.Join(jtroot, ".github", "workflows")
-	if err := os.MkdirAll( folder, 0775 ); err!=nil {
-		fmt.Println("jtframe update: problem creating ", folder, "\n\t", err )
-		os.Exit(1)
-	}
-	t := template.Must(template.New("yaml").Parse(yaml_code))
-	rand.Seed(time.Now().UnixNano())
-
-	for target, _ := range cfg.Targets {
-		if target == "mister" || target == "sockit" || target == "de1soc" || target == "de10std" {
-			continue // not ready yet
-		}
-		for _, core := range cfg.cores {
-			key := make_key(target, core)
-			data := struct {
-				Corename, Target, Extra, Seed, Branches, Docker, OtherBranch string
-			}{
-				Corename:    core,
-				Target:      target,
-				Docker:      "jtcore13",
-				Extra:       cfg.customs[key],
-				Seed:        "",
-				OtherBranch: "",
-			}
-			if target == "mister" {
-				data.Docker = "jtcore:20"
-			}
-			// MiST gets compiled for each update on the master branch
-			if target == "mist" {
-				data.OtherBranch = "master"
-			}
-			for cnt := 0; cnt < 5; cnt++ {
-				var buffer bytes.Buffer
-				if cfg.Seed {
-					data.Seed = fmt.Sprintf("--seed %d", rand.Int31())
-				}
-				err := t.Execute(&buffer, data)
-				if err != nil {
-					log.Fatal(err)
-				}
-				aux := bytes.ReplaceAll(buffer.Bytes(), []byte("¿¿"), []byte("{{"))
-				aux = bytes.ReplaceAll(aux, []byte("??"), []byte("}}"))
-				//fmt.Println(string(aux))
-				// Save to file
-				var f *os.File
-				fname := folder + target + "_" + core
-				if cfg.Seed {
-					fname += fmt.Sprintf("_%d", cnt)
-				}
-				fname = fname + ".yml"
-				f, err = os.Create(fname)
-				if err != nil {
-					log.Fatal(err)
-				}
-				//fmt.Println(fname)
-				f.Write(aux)
-				f.Close()
-				if !cfg.Seed {
-					break
-				}
-			}
-		}
-	}
-	fmt.Println("Remember to add the secrets to the GitHub repository")
-}
-
 func dump_output(cfg Config) {
 	var all_cores []string
 	if len(cfg.Group) != 0 {
@@ -205,11 +134,11 @@ func dump_output(cfg Config) {
 		mra_str += " --git"
 		sch_str += " --git"
 	}
-	if cfg.Beta != "" {
-		mra_str += " --beta"
-	}
 	if cfg.SkipROM { // skips ROM saving, but calculates MD5 anyway
 		mra_str += " --skipROM --md5"
+	}
+	if cfg.MainOnly {
+		mra_str += " --mainonly"
 	}
 	mra_str += "\n"
 	sch_str += "\n"
@@ -233,10 +162,8 @@ func dump_output(cfg Config) {
 	appendif(cfg.Private, "JTFRAME_OSDCOLOR=(6'h20)")
 	appendif(cfg.Nohdmi, "MISTER_DEBUG_NOHDMI")
 	appendif(cfg.Nosnd, "NOSOUND")
-	appendif(cfg.Beta != "", "BETA", "JTFRAME_UNLOCKKEY="+cfg.Beta)
-	lockable := func( s string ) bool { // systems that work with jtbeta.zip
-		return s=="pocket" || s=="mister" || s=="sockit" ||
-				 s=="de1soc" || s=="de10std"
+	nokey := func( s string ) bool { // systems that do not work with jtbeta.zip
+		return s=="mist" || s=="sidi"
 	}
 	for target, valid := range cfg.Targets {
 		if !valid {
@@ -252,20 +179,18 @@ func dump_output(cfg Config) {
 			if cfg.Stamp != "" {
 				jtcore += "--corestamp " + cfg.Stamp
 			}
-			// --git skipped if asked so, but also for all targets but mister in betas
-			dogit := cfg.Git && !(cfg.Beta != "" && target != "mister")
-			if dogit {
+			if cfg.Git {
 				jtcore += " --git" // jtcore will define JTFRAME_RELEASE automatically
 			}
-			if cfg.Nodbg || cfg.Beta != "" || cfg.Private {
+			if cfg.Nodbg || cfg.Private {
 				jtcore += " --nodbg"
 			}
-			if !cfg.Nodbg && !cfg.Seed && !dogit { // Do not check STA for non-release non-jtseed runs
+			if !cfg.Nodbg && !cfg.Seed && !cfg.Git { // Do not check STA for non-release non-jtseed runs
 				jtcore += " --nosta"
 			}
 			for _, each := range defs {
 				each = strings.TrimSpace(each)
-				if strings.Index(each,"JTFRAME_UNLOCKKEY=")==0 && !lockable(target) {
+				if strings.Index(each,"JTFRAME_UNLOCKKEY=")==0 && nokey(target) {
 					continue
 				}
 				if each != "" {
@@ -388,11 +313,7 @@ func Run(cfg *Config, all_args []string) {
 	if cfg.cores == nil {
 		log.Fatal("jtupdate: you must specify at least one core to update")
 	}
-	if cfg.Actions {
-		update_actions(jtroot, *cfg)
-	} else {
-		dump_output(*cfg)
-	}
+	dump_output(*cfg)
 }
 
 // Keep space indentation for YAML code

@@ -27,6 +27,7 @@ module jtrumble_sdram #(
     input              clk,
 
     input              LVBL,
+    output         reg loud,        // the srumbler has low volume, the others are louder
 
     // Main CPU
     input              main_cs,
@@ -104,7 +105,7 @@ localparam [24:0] BA1_START  = `BA1_START,
                   PROM_START = `PROM_START;
 /* verilator lint_on WIDTH */
 
-wire       prom_we;
+wire       prom_we, header;
 wire       gfx_cs = LVBL;
 
 wire convert;
@@ -141,6 +142,7 @@ assign ba0_din_m = 3;
 reg last_dwn;
 
 always @(posedge clk) begin
+    if( header && ioctl_addr[3:0]==0 && ioctl_wr ) loud <= ioctl_dout[0];
     last_dwn   <= ioctl_rom;
     dwnld_busy <= ioctl_rom | last_dwn | convert;
 end
@@ -164,7 +166,7 @@ jtframe_dwnld #(
     .prog_rd      ( dwn_rd         ),
     .prog_ba      ( dwn_ba         ),
     .prom_we      ( prom_we        ),
-    .header       (                ),
+    .header       ( header         ),
     .sdram_ack    ( prog_ack       ),
     .gfx8_en      ( 1'b0           ),
     .gfx16_en     ( 1'b0           )

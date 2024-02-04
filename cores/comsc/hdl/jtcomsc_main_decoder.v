@@ -90,7 +90,7 @@ always @(*) begin
     pal_cs      = A[15:9] == 7'h03; // 0600-06FF
 end
 
-always @(*) begin   // latching this seems to prevent system bootup
+always @(*) begin
     case(1'b1)
         rom_cs:    cpu_din = rom_data;
         ram_cs:    cpu_din = ram_dout;

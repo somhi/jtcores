@@ -6,7 +6,7 @@ For I/O (SDRAM download, etc.) the following indexes are used
 |:----------------|:-----|:-------|:----------------|:----------|
 | Main ROM        | 0    | 0      | 1               | rom.bin   |
 | JTFRAME options | 1    | 1      | F900'0000 write | core.mod  |
-| Cartridges      |      | 4      |                 | cart.bin  |
+| Cartridges      |      | 4      | 4               | cart.bin  |
 | NVRAM           | 255  | 2      | 2               | nvram.bin |
 | Cheat ROM       | 16   | 16     | 16              |           |
 | Beta keys       | N/A  | 17     | 17              |           |
@@ -15,12 +15,22 @@ For I/O (SDRAM download, etc.) the following indexes are used
 
 The cheat ROM and the beta key files must be stored in the folder `/Assets/jtpatreon/common`
 
+In order to use cartridges:
+
+- Define **JTFRAME_CART_OFFSET** in *macros.def*
+- Define **carts** in the **[ROM]** section of *mame2mra.toml*
+
+In MiSTer, the IOCTL ID for cartridges is limited to 6 bits. That enforces a 6-bit limit at JTFRAME for all indexes. But, MiSTer reserves some indexes for which 8 bits are used. See the table above.
+
 ## core_mod (JTFRAME options)
 
-Bit    |  Use
--------|---------
-0      | High for vertical games
-1      | 4-way joysticks
+Bit    |  Use                      | Set by
+-------|---------------------------|---------
+0      | High for vertical games   | mame.xml
+1      | 4-way joysticks           | JTFRAME_SUPPORT_4WAY
+2      | XOR with dip_flip         | mame.xml
+3      | dial input enable         | mame.xml
+4      | reverse the dial          | mame.xml
 
 If JTFRAME_VERTICAL is defined, bit 0 is set during power up. The contents of core_mod can be set by defining a index=1 rom in the MRA file.
 

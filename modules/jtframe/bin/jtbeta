@@ -34,7 +34,6 @@ JTBETA Beta release preparation. (c) Jose Tejada 2021, @topapate
     -The jtupdate script is run with the added options:
         * --all
         * --seed
-        * --beta
     -If all compilations are succesful:
         * commit the builds.log
         * tag the commit as "beta_core_month_day"
@@ -108,20 +107,17 @@ EOF
     if [ $CONT = y ]; then rm -rf $JTROOT/{release,rom}; else KEEP="--keep"; fi
 fi
 
-
-# Beta keys are kept in $JTUTIL/.jtbeta
-if [ ! -s $JTUTIL/.jtbeta ]; then
-    echo "Missing JTUTIL/.jtbeta"
+# Beta keys are kept in $JTUTIL/beta.bin
+if [ ! -s $JTUTIL/beta.bin ]; then
+    echo "Missing $JTUTIL/beta.bin"
     exit 1
 fi
 
-# get $BETAKEY from .jtbeta
-source $JTUTIL/.jtbeta
+# get $BETAKEY from beta.bin
+BETAKEY=$(xxd -p -l 4 $JTUTIL/beta.bin)
+export BETAKEY=$(printf "%d" "0x$BETAKEY")
+zip --junk-paths $JTUTIL/jtbeta.zip $JTUTIL/beta.bin
 # generate the jtbeta.zip file
-# the assembler file for the pico is in asm/beta.s
-cd $JTUTIL/pico
-echo cheatzip beta -beta $BETAKEY
-cheatzip beta -beta $BETAKEY
 # update the beta key in GitHub
 if which gh; then
     gh secret set BETAKEY -b $BETAKEY
@@ -130,10 +126,7 @@ else
     echo "Install github CLI for automatic update of GitHub secrets"
 fi
 
-
-jtupdate $BETACORES --seed \
-    --beta $BETAKEY --corestamp $CORESTAMP $KEEP $* \
-|| exit $?
+jtupdate $BETACORES --seed --corestamp $CORESTAMP $KEEP $* || exit $?
 
 echo -e "\n****** COMPILATION COMPLETE *********\n"
 
@@ -146,6 +139,7 @@ git push --tags --force
 
 cd $JTROOT/release
 cp -r mister mra pocket $JTBIN
+cat version.log >> $JTBIN/version.log
 cd $JTBIN
 git add *
 git commit -m "JTFriday "$(date --date=friday +"%Y-%m-%d")
@@ -154,18 +148,6 @@ git tag --force $TAG
 # Prepare the zip files
 echo "Creating zip files"
 cpbeta.sh
-
-echo "Adding the reference to JTBIN's wiki"
-cd $JTBIN/../jtbin.wiki
-git pull
-for CORE in $BETACORES; do
-    if ! grep -i "\[$CORE\]" Home.md > /dev/null; then
-        echo "WARNING: $CORE not found in JTBIN's wiki"
-        # ./addcore.sh $CORE
-        # git commit -m "Added $CORE"
-        # git push
-    fi
-done
 
 # Show problems
 BETALOG=$JTROOT/log/update.log
