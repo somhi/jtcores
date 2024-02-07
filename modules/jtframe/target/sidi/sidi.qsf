@@ -193,7 +193,17 @@ set_global_assignment -name QIP_FILE game.qip
 # SiDi also defines MiST
 set_global_assignment -name VERILOG_MACRO "MIST=1"
 
+# Leave uncommented only one of the following two strategies:
+#
+# Strategy 1: To save BRAM into LEs
+# Use it for kiwi. Disable it for ninja (edit also cores/*/cfg/macros.def)
 set_global_assignment -name AUTO_RAM_TO_LCELL_CONVERSION ON
+#
+# Strategy 2: To save LEs (works on Quartus 13.1)
+# Use it for s16b, sf (edit also cores/*/cfg/macros.def)
+#set_global_assignment -name PHYSICAL_SYNTHESIS_COMBO_LOGIC ON
+#set_global_assignment -name PHYSICAL_SYNTHESIS_COMBO_LOGIC_FOR_AREA ON
+#set_global_assignment -name PHYSICAL_SYNTHESIS_MAP_LOGIC_TO_MEMORY_FOR_AREA ON
 
 set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to SPI_SCK
 set_global_assignment -name SEARCH_PATH "../hdl"

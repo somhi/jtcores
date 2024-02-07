@@ -16,9 +16,12 @@ JTFRAME_CREDITS
 # feature requires the cheat engine
 JTFRAME_CHEAT
 
-[mist]
+[mist|sidi]
 -JTFRAME_CREDITS
 JTFRAME_NOSTA
 
 [sidi]
 JTFRAME_SKIP
+# To compile core for SiDi:
+# Comment out previous line: #JTFRAME_SKIP
+# Comment out strategy 1 at modules/jtframe/target/sidi/sidi.qsf

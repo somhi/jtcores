@@ -20,7 +20,7 @@ JTFRAME_BA2_AUTOPRECH=1
 JTFRAME_OSD_VOL
 JTFRAME_DIPBASE=8
 
-[mist|mist_psd_gx150|demist_deca|demist_de10lite|demist_zx3a35|demist_zx3a100|demist_zx3a200]
+[mist|sidi|mist_psd_gx150|demist_deca|demist_de10lite|demist_zx3a35|demist_zx3a100|demist_zx3a200]
 JTFRAME_SCAN2X_NOBLEND
 JTFRAME_OSD_NOCREDITS
 JTFRAME_NOSTA
@@ -28,6 +28,10 @@ JTFRAME_NOSTA
 [sidi]
 # it does not fit in SiDi anymore
 JTFRAME_SKIP
+# To compile core for SiDi:
+# Comment out previous line: #JTFRAME_SKIP
+# Set strategy 2 at modules/jtframe/target/sidi/sidi.qsf
+# Use Quartus 13.1
 
 [mister]
 JTFRAME_NOHQ2X
