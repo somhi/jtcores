@@ -152,7 +152,7 @@ wire pll_locked, clk_pico;
 `endif
 
 jtframe_mist_clocks u_clocks(
-    .clk_ext    ( CLK_50         ),    // 27MHz for MiST, 50MHz for Poseidón
+    .clk_ext    ( CLK_50         ),    // 27MHz for MiST, 50MHz for Poseidón/neptuno+
 
     // PLL outputs
     .clk96      ( clk96          ),
