@@ -59,6 +59,12 @@ module neptuno2_top(
     // user LED
     output          LED,
 
+    // SD card
+	// output       SD_CS,
+	input           SD_SCK,     //SD_SCK is being driven by middleboard
+	// output       SD_MOSI,
+	input           SD_MISO,
+	    
     // forward JAMMA DB9 data
     output          JOY_CLK,
     output          JOY_LOAD,
@@ -76,6 +82,11 @@ module neptuno2_top(
     output          sim_dwnld_busy
     `endif
 );
+
+// SD card  (driven by middleboard)
+wire   spi_do_int;
+assign spi_do_int = SPI_SS4 ? 1'bz : SD_MISO;
+assign SPI_DO = spi_do_int;
 
 // JAMMA interface
 assign JOY_CLK    = XJOY_CLK;
@@ -268,9 +279,9 @@ u_frame(
     .SDRAM_BA       ( SDRAM_BA       ),
     .SDRAM_CKE      ( SDRAM_CKE      ),
     // SPI interface to arm io controller
-    .SPI_DO         ( SPI_DO         ),
+    .SPI_DO         ( spi_do_int     ),
     .SPI_DI         ( SPI_DI         ),
-    .SPI_SCK        ( SPI_SCK        ),
+    .SPI_SCK	    ( SPI_SS4 ? SPI_SCK : SD_SCK ),
     .SPI_SS2        ( SPI_SS2        ),
     .SPI_SS3        ( SPI_SS3        ),
     .SPI_SS4        ( SPI_SS4        ),

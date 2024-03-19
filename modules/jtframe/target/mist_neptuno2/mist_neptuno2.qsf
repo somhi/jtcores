@@ -147,6 +147,11 @@ set_location_assignment PIN_AF4 -to XJOY_CLK
 set_location_assignment PIN_AE3 -to XJOY_LOAD
 set_location_assignment PIN_AF5 -to XJOY_DATA
 
+# sd card
+set_location_assignment PIN_A4 -to SD_MISO
+set_location_assignment PIN_C4 -to SD_MOSI
+set_location_assignment PIN_B4 -to SD_SCK
+set_location_assignment PIN_C5 -to SD_CS
 
 
 set_global_assignment -name EDA_SIMULATION_TOOL "<None>"
