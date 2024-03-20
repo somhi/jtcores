@@ -36,7 +36,7 @@ JTFRAME_DIPBASE=8
 [mist|sidi]
 NOCREDITS
 
-[mist|sidi|mist_psd_gx150|demist_deca|demist_de10lite|demist_zx3a35|demist_zx3a100|demist_zx3a200]
+[mist|sidi|mist_psd_gx150|mist_neptuno2|demist_deca|demist_de10lite|demist_zx3a35|demist_zx3a100|demist_zx3a200]
 CORE_OSD=O5,Turbo,Off,On;
 # OSD credits cannot be used when
 # DIP base is less than 13
