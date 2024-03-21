@@ -12,7 +12,7 @@ JTFRAME_PROM_START = 22'h6_0000
 JTFRAME_SDRAM_BANKS
 JTFRAME_DIPBASE=8
 
-[mist|sidi|mist_psd_gx150|mist_neptuno2|demist_deca|demist_de10lite|demist_zx3a35|demist_zx3a100|demist_zx3a200]
+[mist|sidi|mist_psd_gx150|mist_psd_cl120|mist_neptuno2|demist_deca|demist_de10lite|demist_zx3a35|demist_zx3a100|demist_zx3a200]
 # OSD credits cannot be used when
 # DIP base is less than 13
 JTFRAME_OSD_NOCREDITS
