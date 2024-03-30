@@ -127,7 +127,7 @@ wire [15:0] joyana_l1, joyana_l2, joyana_l3, joyana_l4,
 wire rst_req   = status[0];
 
 // ROM download
-wire          ioctl_rom, dwnld_busy;
+wire          ioctl_rom, ioctl_cart, dwnld_busy;
 
 wire [SDRAMW-1:0] prog_addr;
 wire [15:0]   prog_data;
@@ -416,6 +416,7 @@ u_frame(
     .ioctl_ram      ( ioctl_ram      ),
 
     .ioctl_rom      ( ioctl_rom      ),
+    .ioctl_cart     ( ioctl_cart     ),
     .dwnld_busy     ( dwnld_busy     ),
 
     .sdram_dout     ( sdram_dout     ),
@@ -481,6 +482,10 @@ u_frame(
     .scan2x_de      ( scan2x_de      ),
 
     .osd_en         ( osd_en         ),
+	`else
+    .joy1_bus       (                ),
+    .joy2_bus       (                ),
+    .JOY_SELECT     (                ),
 	`endif   
     // DIP and OSD settings
     .enable_fm      ( enable_fm      ),

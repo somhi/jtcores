@@ -111,6 +111,9 @@ module jtframe_mist_base #(parameter
     output          ioctl_ram,
     output          ioctl_cheat,
     output          ioctl_rom,
+    // Debug
+    input      [7:0]debug_bus,
+    output reg [7:0]debug_view,
 
     output          scan2x_toggle,
     output          osd_en
@@ -141,6 +144,10 @@ assign joyana_l3 = 0;
 assign joyana_r3 = 0;
 assign joyana_l4 = 0;
 assign joyana_r4 = 0;
+
+always @(posedge clk_sys) begin
+    debug_view <= { osd_shown, 1'b0, osd_rotate, 1'b0, no_csync, ypbpr, scan2x_enb };
+end
 
 `ifndef SIMULATION
     `ifndef NOSOUND
@@ -350,6 +357,8 @@ jtframe_ram #(.SYNFILE("cfgstr.hex")) u_cfgstr(
 		assign joystick4        = 0;
 		assign joyana_l1        = 0;
 		assign joyana_r1        = 0;
+	`else
+    	assign JOY_SELECT=0;
 	`endif
 
 `else

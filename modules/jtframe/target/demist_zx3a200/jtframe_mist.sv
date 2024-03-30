@@ -108,6 +108,7 @@ module jtframe_mist #(parameter
     output             ioctl_ram,
     input              dwnld_busy,
     output             ioctl_rom,
+    output             ioctl_cart,
 
 //////////// board
     output             rst,      // synchronous reset
@@ -185,7 +186,7 @@ wire  [15:0]  board_left, board_right;
 wire  [ 8:0]  bd_mouse_dx, bd_mouse_dy;
 wire          bd_mouse_st, bd_mouse_idx;
 wire  [ 7:0]  bd_mouse_f;
-wire  [ 7:0]  ioctl_merged;
+wire  [ 7:0]  ioctl_merged, mist_view;
 
 
 assign paddle_3 = 0;
@@ -193,6 +194,7 @@ assign paddle_4 = 0;
 assign dipsw = `ifdef JTFRAME_SIM_DIPS
     `JTFRAME_SIM_DIPS `else
     status[31+DIPBASE:DIPBASE] `endif;
+assign ioctl_cart = 0; // not supported for now
 
 always @* begin
     board_status = { {64-DIPBASE{1'b0}}, status[DIPBASE-1:0] };
@@ -299,6 +301,9 @@ jtframe_mist_base #(
     .ioctl_ram      ( ioctl_ram     ),
     .ioctl_cheat    ( ioctl_cheat   ),
     .ioctl_rom      ( ioctl_rom     ),
+    // Debug
+    .debug_bus      ( debug_bus     ),
+    .debug_view     ( mist_view     ),
 
     .scan2x_toggle  ( scan2x_toggle ),            
     .osd_en         ( osd_en        )
@@ -321,7 +326,8 @@ jtframe_board #(
     .sdram_init     ( sdram_init      ),
     .pll_locked     ( pll_locked      ),
     .ioctl_ram      ( ioctl_ram       ),
-    .ioctl_rom      ( dwnld_busy      ), // use busy signal from game module
+    .ioctl_cart     ( ioctl_cart      ),
+    .dwnld_busy     ( dwnld_busy      ), // use busy signal from game module
 
     .clk_sys        ( clk_sys         ),
     .clk_rom        ( clk_rom         ),
@@ -362,6 +368,19 @@ jtframe_board #(
     .dial_y         ( dial_y          ),
     .spinner_1      ( 9'd0            ),
     .spinner_2      ( 9'd0            ),
+    // keyboard
+    .board_digit    ( 8'd0            ),
+    .board_gfx      ( 4'd0            ),
+    .board_reset    ( 1'b0            ),
+    .board_pause    ( 1'b0            ),
+    .board_tilt     ( 1'b0            ),
+    .board_test     ( 1'b0            ),
+    .board_service  ( 1'b0            ),
+    .board_shift    ( 1'b0            ),
+    .board_ctrl     ( 1'b0            ),
+    .board_alt      ( 1'b0            ),
+    .board_plus     ( 1'b0            ),
+    .board_minus    ( 1'b0            ),
     // Mouse & paddle
     .bd_mouse_dx    ( bd_mouse_dx     ),
     .bd_mouse_dy    ( bd_mouse_dy     ),
@@ -450,7 +469,7 @@ jtframe_board #(
     .ioctl_addr ( ioctl_addr[12:0]  ),
     .st_addr    ( st_addr           ),
     .st_dout    ( st_dout           ),
-    .target_info( 8'h00             ),
+    .target_info( mist_view         ),
 
     // input data recording
     .ioctl_din      ( ioctl_din       ),
