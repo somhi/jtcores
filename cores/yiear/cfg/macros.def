@@ -17,7 +17,7 @@ PCM_START =0x24000
 
 # Video
 
-[demist_deca|demist_de10lite|demist_zx3a35|demist_zx3a100|demist_zx3a200]
+[demist_*]
 JTFRAME_DIPBASE=8
 # OSD credits cannot be used when
 # DIP base is less than 13

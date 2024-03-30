@@ -20,7 +20,7 @@ JTFRAME_BA2_AUTOPRECH=1
 JTFRAME_OSD_VOL
 JTFRAME_DIPBASE=8
 
-[mist|sidi|mist_psd_gx150|mist_neptuno2|demist_deca|demist_de10lite|demist_zx3a35|demist_zx3a100|demist_zx3a200]
+[mist|sidi|demist_*|mist_*]
 JTFRAME_SCAN2X_NOBLEND
 JTFRAME_OSD_NOCREDITS
 JTFRAME_NOSTA
