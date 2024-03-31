@@ -43,7 +43,6 @@ module jtframe_gated_cen #( parameter
 localparam NUM2   = NUM<<1,
            DIGITS = (MFREQ*NUM)/DEN>9999 ? 5 : 4;
 
-// reg  [ W-1:0] pre;
 wire          over;
 wire [  CW:0] cencnt_nx, sum;
 reg  [CW-1:0] cencnt=0;
@@ -82,6 +81,10 @@ always @(posedge clk) begin
     if(bad) begin
         badcnt <= badcnt+1;
         if( &badcnt ) $finish;
+    end
+    if( rst ) begin
+        badcnt <= 0;
+        bad    <= 0;
     end
 end
 `endif

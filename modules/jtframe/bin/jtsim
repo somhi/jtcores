@@ -153,6 +153,16 @@ Please support the development: https://patreon.com/jotego
 EOF
 }
 
+function has_parent {
+    p=`pwd`
+    while [ "$p" != "/" ]; do
+        parent=$(dirname "$p")
+        if [ $(basename "$parent") = "$1" ]; then return 0; fi
+        p=$parent
+    done
+    return 1
+}
+
 function clean_up {
     rm -f video.pipe frame.raw \
        game.f  jtsim.f  jtsim_vhdl.f simfile.f *bak *.def \
@@ -283,6 +293,11 @@ function set_mist_as_target {
 function set_zoom {
     export CONVERT_OPTIONS="-resize 200%x200% $CONVERT_OPTIONS"
 }
+
+if ! has_parent ver; then
+    echo "jtsim must be called from within the ver folder of the core"
+    exit 1
+fi
 
 while [ $# -gt 0 ]; do
 case "$1" in
@@ -495,7 +510,8 @@ if [ ! -z "$SETNAME" ]; then
     if [ ! -e $ROMFILE ]; then
         cat<<EOF
 jtsim: cannot produce $ROMFILE"
-    This may occur if the setname is long than 8 characters
+    This may occur if the setname is longer than 8 characters or
+    if you are not in the core folder for the game
 EOF
         exit 1
     fi
@@ -660,9 +676,13 @@ mist_dump.v \
     FILES=
 fi
 
-# Link to hex filters in JTFRAME as needed
+# Link to hex filters in module files as needed
 if grep -q jtframe_jt49_filters filtered.f; then
     ln -srf $JTFRAME/hdl/sound/firjt49.hex
+fi
+
+if grep -q jt6295 filtered.f; then
+    for i in $MODULES/jt6295/hdl/*.hex; do ln -srf $i; done
 fi
 
 # These tools use the same names for their executables, so the
@@ -827,7 +847,7 @@ if [ $(ls frames/frame*jpg 2>/dev/null | wc -l ) -gt 250 ]; then
     if has_macro JTFRAME_SIM_VIDEO; then FRAMERATE=60; fi
     ffmpeg -y -framerate $FRAMERATE \
         -pattern_type glob -i frames/'frame_*.jpg' \
-        -i snd.wav -c:a aac -c:v libx264 -vf "scale=iw*3:ih*3" \
+        -i test.wav -c:a aac -c:v libx264 -vf "scale=iw*3:ih*3" \
         -pix_fmt yuv420p test.mp4 > /dev/null
 fi
 
@@ -842,6 +862,6 @@ echo "====== JTSIM finished in "$MINUTES\'$SECONDS\"" ======"
 # Open the image viewer for scene sims
 if which eom > /dev/null; then
     if [[ ! -z "$SCENE" && -e frames/frame_00001.jpg ]]; then
-        eom frames/frame_00001.jpg &
+        eom `ls frames/frame_*.jpg | tail -n 1` &
     fi
 fi

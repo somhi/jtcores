@@ -115,7 +115,10 @@ set_location_assignment PIN_G26 -to SDRAM_nCAS
 set_location_assignment PIN_G25 -to SDRAM_nWE
 set_location_assignment PIN_H26 -to SDRAM_nCS
 set_location_assignment PIN_K24 -to SDRAM_CKE
-set_location_assignment PIN_J23 -to SDRAM_CLK
+set_location_assignment PIN_E22 -to SDRAM_CLK
+# PIN_E22 is PLL4_CLKOUTP.  PIN_J23 is DIFFIO_R13N/DQ2R
+#set_location_assignment PIN_J23 -to SDRAM_CLK
+
 # Audio
 #set_location_assignment PIN_ -to AUDIO_L
 #set_location_assignment PIN_ -to AUDIO_R

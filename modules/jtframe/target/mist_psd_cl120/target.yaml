@@ -1,0 +1,14 @@
+# POSEIDON QMTECH_CycloneIV_EP4CGX150GX
+here:
+  - common.yaml
+  - jtframe_poseidon_cl120_top.sv
+  # I2S audio
+  - ../neptuno/audio_top.vhd
+  - constraints.sdc
+  #- jtframe_mist_clocks.v
+  # 50 to 27MHz conversion
+  #- ../neptuno/pll_neptuno.qip
+
+
+
+

@@ -56,6 +56,11 @@ function require {
 require "$CORES/$CORENAME/cfg/mame2mra.toml"
 require "$JTROOT/doc/mame.xml"
 
+if [ ! -d ~/.mame/roms ]; then
+    echo "Cannot find folder ~/.mame/roms"
+    exit 1
+fi
+
 AUX=`mktemp`
 if ! jtframe mra $CORENAME $* > $AUX; then
     cat $AUX
@@ -67,12 +72,18 @@ rm $AUX
 MATCHES=`mktemp`
 
 find $JTROOT/release/mra -name "*.mra" -print0 | xargs -0 grep --files-with-matches ">$SETNAME<" > $MATCHES
-if [ `wc -l $MATCHES | cut -f 1 -d ' '` -gt 1 ]; then
-    echo "getset.sh: More than one MRA file contained $SETNAME"
-    cat $MATCHES
-    rm $MATCHES
-    exit 1
-fi
+case `wc -l $MATCHES | cut -f 1 -d ' '` in
+    0)
+        echo "Cannot find the required ROM set: $SETNAME in $MRA."
+        echo "Check the set name spelling."
+        exit 1;;
+    1) basename "$(cat $MATCHES)";;
+    *)
+        echo "getset.sh: More than one MRA file contained $SETNAME"
+        cat $MATCHES
+        rm $MATCHES
+        exit 1;;
+esac
 
 # Get the DIP switch configuration
 cd $ROM

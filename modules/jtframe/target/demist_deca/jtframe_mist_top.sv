@@ -442,7 +442,11 @@ u_frame(
     .joy1_bus       ( JOY1           ),
     .joy2_bus       ( JOY2           ),
     .JOY_SELECT     ( JOY_SELECT     ),
-    .osd_en         (osd_en          ),
+    .osd_en         ( osd_en         ),
+	`else
+    .joy1_bus       (                ),
+    .joy2_bus       (                ),
+    .JOY_SELECT     (                ),
 	`endif   
     // DIP and OSD settings
     .enable_fm      ( enable_fm      ),

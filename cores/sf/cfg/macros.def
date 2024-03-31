@@ -25,6 +25,15 @@ JTFRAME_SCAN2X_NOBLEND
 # OSD credits cannot be used when
 # DIP base is less than 13
 JTFRAME_OSD_NOCREDITS
+JTFRAME_NOSTA
+
+[sidi]
+# it does not fit in SiDi anymore
+JTFRAME_SKIP
+# To compile core for SiDi:
+# Comment out previous line: #JTFRAME_SKIP
+# Set strategy 2 at modules/jtframe/target/sidi/sidi.qsf
+# Use Quartus 13.1
 
 [mister]
 JTFRAME_NOHQ2X

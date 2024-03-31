@@ -69,10 +69,10 @@ assign { dipsw_c, dipsw_b, dipsw_a } = ~24'd0;
 `endif
 
 wire [ 1:0] dsn;
-wire        cen16, cen12, cen8, cen10b;
+wire        cen10b;
 wire        cpu_cen, cpu_cenb;
 wire        charger;
-wire        turbo, pcmfilter_en, video_flip;
+wire        turbo, video_flip;
 
 `ifdef JTCPS_TURBO
 assign turbo = 1;
@@ -84,50 +84,22 @@ assign turbo = 1;
     `endif
 `endif
 
-assign pcmfilter_en = status[1];
 assign debug_view   = { 7'd0, dump_flag };
 assign ba1_din=0, ba2_din=0, ba3_din=0,
        ba1_dsn=3, ba2_dsn=3, ba3_dsn=3;
 
-// CPU clock enable signals come from 48MHz domain
-jtframe_cen48 u_cen48(
-    .clk        ( clk48         ),
-    .cen16      ( cen16         ),
-    .cen12      ( cen12         ),
-    .cen8       ( cen8          ),
-    .cen6       (               ),
-    .cen4       (               ),
-    .cen4_12    (               ),
-    .cen3       (               ),
-    .cen3q      (               ),
-    .cen1p5     (               ),
-    // 180 shifted signals
-    .cen16b     (               ),
-    .cen12b     (               ),
-    .cen6b      (               ),
-    .cen3b      (               ),
-    .cen3qb     (               ),
-    .cen1p5b    (               )
+jtframe_cen96 u_pxl_cen(
+    .clk    ( clk96     ),    // 96 MHz
+    .cen16  ( pxl2_cen  ),
+    .cen12  (           ),
+    .cen8   ( pxl_cen   ),
+    // Unused:
+    .cen6   (           ),
+    .cen6b  (           )
 );
+assign clk_gfx = clk96;
+assign rst_gfx = rst96;
 
-`ifdef JTFRAME_CLK96
-    jtframe_cen96 u_pxl_cen(
-        .clk    ( clk96     ),    // 96 MHz
-        .cen16  ( pxl2_cen  ),
-        .cen12  (           ),
-        .cen8   ( pxl_cen   ),
-        // Unused:
-        .cen6   (           ),
-        .cen6b  (           )
-    );
-    assign clk_gfx = clk96;
-    assign rst_gfx = rst96;
-`else
-    assign pxl2_cen = cen16;
-    assign pxl_cen  = cen8;
-    assign clk_gfx = clk;
-    assign rst_gfx = rst;
-`endif
 
 localparam REGSIZE=24;
 
@@ -135,7 +107,7 @@ localparam REGSIZE=24;
 wire busreq_cpu = busreq & ~turbo;
 wire busack_cpu;
 assign busack = busack_cpu | turbo;
-
+/* verilator tracing_off */
 `ifndef NOMAIN
 jtcps1_main u_main(
     .rst        ( rst48             ),
@@ -215,7 +187,7 @@ always @(posedge clk_gfx) begin
 end
 
 assign dip_flip = video_flip;
-
+/* verilator tracing_off */
 jtcps1_video #(REGSIZE) u_video(
     .rst            ( rst_video     ),
     .clk            ( clk_gfx       ),
@@ -373,19 +345,10 @@ reg [3:0] rst_snd;
 always @(posedge clk) begin
     rst_snd <= { rst_snd[2:0], rst48 };
 end
-
+/* verilator tracing_off */
 jtcps1_sound u_sound(
     .rst            ( rst_snd[3]    ),
     .clk            ( clk48         ),
-
-    .enable_adpcm   ( enable_psg    ),
-    .enable_fm      ( enable_fm     ),
-    `ifdef MISTER
-        .fxlevel    ( dip_fxlevel   ),
-    `else
-        .fxlevel    ( 2'd2          ), // not enough bits in MiST's OSD
-    `endif
-    .pcmfilter_en   ( pcmfilter_en  ),
 
     // Interface with main CPU
     .snd_latch0     ( snd_latch0    ),
@@ -407,7 +370,8 @@ jtcps1_sound u_sound(
     .left           ( snd_left      ),
     .right          ( snd_right     ),
     .sample         ( sample        ),
-    .peak           ( game_led      )
+    .peak           ( game_led      ),
+    .debug_bus      ( debug_bus     )
 );
 `else
 assign snd_addr   = 0;
@@ -424,7 +388,7 @@ reg rst_sdram;
 always @(posedge clk) rst_sdram <= rst;
 
 wire nc0, nc1, nc2, nc3;
-
+/* verilator tracing_on */
 jtcps1_sdram #(.REGSIZE(REGSIZE)) u_sdram (
     .rst         ( rst_sdram     ),
     .clk         ( clk           ),

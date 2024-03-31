@@ -1,4 +1,3 @@
-aliens: [ mister, pocket ]
 simson: [ mister, pocket ]
 tmnt:   [ mister, pocket ]
 shouse: [ mister, pocket ]
@@ -6,7 +5,8 @@ ngp:    [ mister, pocket ]
 bubl:   [ pocket ]
 "1942": [ pocket ]
 # upcoming ports from MiSTer to Pocket
-# 1943: [ pocket ]
+# update the core's macros.def when making a new beta
+# "1943": [ pocket ]
 # biocom: [ pocket ]
 # commnd: [ pocket ]
 # flane: [ pocket ]

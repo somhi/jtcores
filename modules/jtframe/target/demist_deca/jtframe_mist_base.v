@@ -334,6 +334,9 @@ jtframe_ram #(.SYNFILE("cfgstr.hex")) u_cfgstr(
 		assign joystick4        = 0;
 		assign joyana_l1        = 0;
 		assign joyana_r1        = 0;
+
+	`else
+    	assign JOY_SELECT=0;
 	`endif
 
 `else

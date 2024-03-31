@@ -630,11 +630,11 @@ func make_buttons(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
 			}
 		}
 	}
-	pad := "Y,X,B,A,R,L,"
+	pad := "A,B,X,Y,L,R,"
 	for k := len(buttons); k < 6 && k < cfg.Buttons.Core; k++ {
 		buttons_str += "-,"
 	}
-	pad = pad[0 : cfg.Buttons.Core*2]
+	pad = pad[0 : len(buttons)*2]
 	buttons_str += "Start,Coin,Core credits"
 	n.AddAttr("names", buttons_str)
 	n.AddAttr("default", pad+"Start,Select,-")

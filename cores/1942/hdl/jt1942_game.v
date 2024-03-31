@@ -51,7 +51,7 @@ reg         flip_xor=0, eff_flip=0, hige=0;
 assign prom_red_we   = prom_we && prog_addr[11:8]==0; // sb-5.e8 - also used as Higemaru's palette
 assign prom_green_we = prom_we && prog_addr[11:8]==1; // sb-6.e9
 assign prom_blue_we  = prom_we && prog_addr[11:8]==2; // sb-7.e10
-assign prom_char_we  = prom_we && prog_addr[11:8]==(!hige ? 4'd3 : 4'd1); // sb-0.f1
+assign prom_char_we  = prom_we && prog_addr[11:8]==(!hige ? 4'd3 : 4'd1) && (!hige || !prog_addr[7]); // sb-0.f1
 assign prom_scr_we   = prom_we && prog_addr[11:8]==4; // sb-4.d6
 assign prom_obj_we   = prom_we && prog_addr[11:8]==(!hige ? 4'd5 : 4'd2); // sb-8.k3
 assign prom_d1_we    = prom_we && prog_addr[11:8]==6; // sb-2.d1 -- unused by Vulgus
@@ -62,6 +62,11 @@ assign pxl2_cen = cen12;
 assign pxl_cen  = cen6;
 assign debug_view = 0;
 assign dip_flip = eff_flip^flip_xor;
+// CHAR VRAM in mem.yaml
+assign chram_dout = cpu_AB[10] ? chram_o16[15:8] : chram_o16[7:0];
+assign chram_din  = {2{cpu_dout}};
+assign chram_addr = cpu_AB[9:0];
+assign chram_we   = {2{char_cs&~wr_n}} & {cpu_AB[10],~cpu_AB[10]};
 
 always @* begin
     post_addr = prog_addr;
@@ -73,7 +78,7 @@ end
 always @(posedge clk) begin
     hige <= game_id==HIGEMARU;
     if( header && prog_we ) begin
-        case(ioctl_addr[0])
+        case(ioctl_addr[1:0])
             0: game_id  <= prog_data[1:0];
             1: flip_xor <= prog_data[0];
         endcase
@@ -81,7 +86,7 @@ always @(posedge clk) begin
     // Vulgus has an "extra" DIP switch to enable screnn flip
     eff_flip <= (game_id==VULGUS & dipsw[16]) ^ flip_xor ^ flip ;
 end
-
+/* verilator tracing_off */
 jt1942_main u_main(
     .rst        ( rst           ),
     .clk        ( clk           ),
@@ -171,7 +176,7 @@ jt1942_sound u_sound (
     // Unused
     .snd_latch      (                )
 );
-
+/* verilator tracing_on */
 jt1942_video u_video(
     .rst        ( rst           ),
     .clk        ( clk           ),
@@ -189,11 +194,12 @@ jt1942_video u_video(
     .pause      ( ~dip_pause    ), //dipsw_a[7]    ),
     // CHAR
     .char_cs    ( char_cs       ),
-    .chram_dout ( chram_dout    ),
     .char_addr  ( char_addr     ), // CHAR ROM
     .char_data  ( char_data     ),
     .char_ok    ( char_ok       ),
     .char_busy  ( char_busy     ),
+    .tmap_addr  ( tmap_addr     ),
+    .tmap_dout  ( tmap_dout     ),
     // SCROLL - ROM
     .scr_cs     ( scr_cs        ),
     .scram_dout ( scram_dout    ),

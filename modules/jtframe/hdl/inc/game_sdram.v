@@ -16,18 +16,11 @@ module jt{{.Core}}_game_sdram(
 );
 
 /* verilator lint_off WIDTH */
-`ifdef JTFRAME_BA1_START
-    localparam [25:0] BA1_START=`JTFRAME_BA1_START;
-`endif
-`ifdef JTFRAME_BA2_START
-    localparam [25:0] BA2_START=`JTFRAME_BA2_START;
-`endif
-`ifdef JTFRAME_BA3_START
-    localparam [25:0] BA3_START=`JTFRAME_BA3_START;
-`endif
-`ifdef JTFRAME_PROM_START
-    localparam [25:0] PROM_START=`JTFRAME_PROM_START;
-`endif
+localparam [25:0] BA1_START  =`ifdef JTFRAME_BA1_START  `JTFRAME_BA1_START  `else 26'd0 `endif;
+localparam [25:0] BA2_START  =`ifdef JTFRAME_BA2_START  `JTFRAME_BA2_START  `else 26'd0 `endif;
+localparam [25:0] BA3_START  =`ifdef JTFRAME_BA3_START  `JTFRAME_BA3_START  `else 26'd0 `endif;
+localparam [25:0] PROM_START =`ifdef JTFRAME_PROM_START `JTFRAME_PROM_START `else 26'd0 `endif;
+localparam [25:0] HEADER_LEN =`ifdef JTFRAME_HEADER     `JTFRAME_HEADER     `else 26'd0 `endif;
 /* verilator lint_on WIDTH */
 
 {{ range .Params }}
@@ -60,7 +53,7 @@ wire [ 1:0] {{.Name}}_dsn;
 {{- end}}
 wire        prom_we, header;
 wire [21:0] raw_addr, post_addr;
-wire [25:0] pre_addr, dwnld_addr;
+wire [25:0] pre_addr, dwnld_addr, ioctl_addr_noheader;
 wire [ 7:0] post_data;
 wire [15:0] raw_data;
 wire        pass_io;
@@ -72,16 +65,36 @@ wire {{ . }}; {{ end }}{{ end }}{{ end }}
 wire gfx8_en, gfx16_en, ioctl_dwn;
 
 assign pass_io = header | ioctl_ram;
+assign ioctl_addr_noheader = `ifdef JTFRAME_HEADER header ? ioctl_addr : ioctl_addr - HEADER_LEN `else ioctl_addr `endif ;
+
+wire rst_h, rst24_h, rst48_h, hold_rst;
+
+jtframe_rsthold u_hold(
+    .rst    ( rst       ),
+    .clk    ( clk       ),
+    .hold   ( hold_rst  ),
+    .rst_h  ( rst_h     )
+`ifdef JTFRAME_CLK24 ,
+    .rst24  ( rst24     ),
+    .clk24  ( clk24     ),
+    .rst24_h( rst24_h   )
+`endif
+`ifdef JTFRAME_CLK48 ,
+    .rst48  ( rst48     ),
+    .clk48  ( clk48     ),
+    .rst48_h( rst48_h   )
+`endif
+);
 
 jt{{if .Game}}{{.Game}}{{else}}{{.Core}}{{end}}_game u_game(
-    .rst        ( rst       ),
+    .rst        ( rst_h     ),
     .clk        ( clk       ),
 `ifdef JTFRAME_CLK24
-    .rst24      ( rst24     ),
+    .rst24      ( rst24_h   ),
     .clk24      ( clk24     ),
 `endif
 `ifdef JTFRAME_CLK48
-    .rst48      ( rst48     ),
+    .rst48      ( rst48_h   ),
     .clk48      ( clk48     ),
 `endif
 {{- range $k,$v := .Clocks }} {{- range $v}}
@@ -173,7 +186,7 @@ jt{{if .Game}}{{.Game}}{{else}}{{.Core}}{{end}}_game u_game(
     {{- end}}
 {{- end}}
     // PROM writting
-    .ioctl_addr   ( ioctl_addr     ),
+    .ioctl_addr   ( pass_io ? ioctl_addr       : ioctl_addr_noheader  ),
     .prog_addr    ( pass_io ? ioctl_addr[21:0] : raw_addr      ),
     .prog_data    ( pass_io ? ioctl_dout       : raw_data[7:0] ),
     .prog_we      ( pass_io ? ioctl_wr         : prog_we       ),
@@ -229,11 +242,15 @@ assign prog_data = {{if .Download.Post_data }}{2{post_data}}{{else}}raw_data{{en
 assign gfx8_en   = {{ .Gfx8 }}
 assign gfx16_en  = {{ .Gfx16 }}
 assign ioctl_dwn = ioctl_rom | ioctl_cart;
-/* verilator tracing_off */
+`ifdef VERILATOR_KEEP_SDRAM /* verilator tracing_on */ `else /* verilator tracing_off */ `endif
 jtframe_dwnld #(
 `ifdef JTFRAME_HEADER
     .HEADER    ( `JTFRAME_HEADER   ),
-`endif
+`endif{{ if .Balut }}
+    .BALUT      ( {{.Balut}}    ),  // Using offsets in header for
+    .LUTSH      ( {{.Lutsh}}    ),  // bank assignment
+    .LUTDW      ( {{.Lutdw}}    ),
+{{else}}
 `ifdef JTFRAME_BA1_START
     .BA1_START ( BA1_START ),
 `endif
@@ -242,7 +259,7 @@ jtframe_dwnld #(
 `endif
 `ifdef JTFRAME_BA3_START
     .BA3_START ( BA3_START ),
-`endif
+`endif{{end}}
 `ifdef JTFRAME_PROM_START
     .PROM_START( PROM_START ),
 `endif
@@ -267,10 +284,11 @@ jtframe_dwnld #(
     .header       ( header         ),
     .sdram_ack    ( prog_ack       )
 );
-/* verilator tracing_on*/
+`ifdef VERILATOR_KEEP_SDRAM /* verilator tracing_on */ `else /* verilator tracing_off */ `endif
+{{ $holded := false }}
+{{ $holded_slot := false }}
 {{ range $bank, $each:=.SDRAM.Banks }}
 {{- if gt (len .Buses) 0 }}
-`ifndef VERILATOR_KEEP_SDRAM /* verilator tracing_off */ `endif
 jtframe_{{.MemType}}_{{len .Buses}}slot{{with lt 1 (len .Buses)}}s{{end}} #(
 {{- $first := true}}
 {{- range $index, $each:=.Buses}}
@@ -301,7 +319,8 @@ jtframe_{{.MemType}}_{{len .Buses}}slot{{with lt 1 (len .Buses)}}s{{end}} #(
     {{- else }}
     .slot{{$index2}}_addr  ( {{.Name}}_addr  ),
     {{- end }}{{end}}
-    {{- if .Rw }}
+    {{- if .Rw }}{{ if not $holded_slot }}
+    .hold_rst    ( hold_rst        ), {{ $holded_slot = true }}{{ $holded = true }}{{end}}
     .slot{{$index2}}_wen   ( {{.Name}}_we    ),
     .slot{{$index2}}_din   ( {{if .Din}}{{.Din}}{{else}}{{.Name}}_din{{end}}   ),
     .slot{{$index2}}_wrmask( {{if .Dsn}}{{.Dsn}}{{else}}{{.Name}}_dsn{{end}}   ),
@@ -326,13 +345,12 @@ jtframe_{{.MemType}}_{{len .Buses}}slot{{with lt 1 (len .Buses)}}s{{end}} #(
     .data_rdy    ( ba_rdy[{{$bank}}]  ),
     .data_read   ( data_read  )
 );
-
 {{- if $is_rom }}
 assign ba_wr[{{$bank}}] = 0;
 assign ba{{$bank}}_din  = 0;
 assign ba{{$bank}}_dsn  = 3;
 {{- end}}{{- end }}{{end}}
-
+{{ if not $holded }}assign hold_rst=0;{{end}}
 {{ range $index, $each:=.Unused }}
 {{- with . -}}
 assign ba{{$index}}_addr = 0;
@@ -397,8 +415,8 @@ jtframe_ram{{ if eq $bus.Data_width 16 }}16{{end}} #(
     .clk    ( clk  ),{{ if eq $bus.Data_width 8 }}
     .cen    ( 1'b1 ),{{end}}
     .addr   ( {{$bus.Addr}} ),
-    .data   ( {{if $bus.Din }}{{$bus.Din }}{{else}}{{$bus.Name}}_din {{end}} ),
-    .we     ( {{if $bus.We  }}{{$bus.We  }}{{else}}{{$bus.Name}}_we  {{end}} ),
+    .data   ( {{$bus.Din }} ),
+    .we     ( {{$bus.We  }} ),
     .q      ( {{$bus.Name}}_dout )
 );{{ end }}
 {{ end }}{{end}}
@@ -406,8 +424,11 @@ jtframe_ram{{ if eq $bus.Data_width 16 }}16{{end}} #(
 {{- if .Ioctl.Dump }}
 /* verilator tracing_off */
 wire [7:0] ioctl_aux;
-{{- range $k, $v := .Ioctl.Buses }}{{ if $v.Aout }}
-wire [{{$v.AW}}-1:{{$v.AWl}}] {{$v.Aout}};{{end -}}{{end}}
+{{- range $k, $v := .Ioctl.Buses }}{{ if $v.Name}}
+wire [{{$v.DW}}-1:0] {{$v.Name}}_dimx;
+wire [  1:0] {{$v.Name}}_wemx;{{ if $v.Amx }}{{end}}
+wire [{{$v.AW}}-1:{{$v.AWl}}] {{$v.Amx}};{{end -}}
+{{end}}
 
 jtframe_ioctl_dump #(
     {{- $first := true}}
@@ -417,14 +438,22 @@ jtframe_ioctl_dump #(
 ) u_dump (
     .clk       ( clk        ),
     {{- range $k, $v := .Ioctl.Buses }}
-    .din{{$k}}      ( {{$v.Dout}} ),
-    .addrin_{{$k}}  ( {{$v.Ain}} ),
-    .addrout_{{$k}} ( {{$v.Aout}} ),
+    // dump {{$k}}
+    .dout{{$k}}        ( {{$v.Dout}} ),
+    .addr{{$k}}        ( {{$v.A}} ),
+    .addr{{$k}}_mx     ( {{$v.Amx}} ),
+    // restore
+    .din{{$k}}         ( {{$v.Din}} ),
+    .din{{$k}}_mx      ( {{with $v.Name}}{{.}}_dimx{{end}} ),
+    .we{{$k}}          ( {{if eq $v.DW 8 }}{ 1'b0,{{ $v.We }} }{{else}}{{$v.We}}{{end}}),
+    .we{{$k}}_mx       ( {{with $v.Name}}{{.}}_wemx{{end}} ),
     {{end }}
     .ioctl_addr ( ioctl_addr[23:0] ),
     .ioctl_ram  ( ioctl_ram ),
     .ioctl_aux  ( ioctl_aux ),
-    .ioctl_din  ( ioctl_din )
+    .ioctl_wr   ( ioctl_wr  ),
+    .ioctl_din  ( ioctl_din ),
+    .ioctl_dout ( ioctl_dout)
 );
 {{ end }}
 
@@ -432,7 +461,7 @@ jtframe_ioctl_dump #(
 // Clock enable generation
 {{- range $k, $v := .Clocks }} {{- range $cnt, $val := $v}}
 // {{ .Comment }} Hz from {{ .ClkName }}
-/* verilator tracing_off */
+`ifdef VERILATOR_KEEP_CEN /* verilator tracing_on */ `else /* verilator tracing_off */ `endif
 jtframe_gated_cen #(.W({{.W}}),.NUM({{.Mul}}),.DEN({{.Div}}),.MFREQ({{.KHz}})) u_cen{{$cnt}}_{{.ClkName}}(
     .rst    ( rst          ),
     .clk    ( {{.ClkName}} ),

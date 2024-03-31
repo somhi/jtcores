@@ -450,12 +450,12 @@ function report {
         $PRJCOMMIT $JTFRAMECOMMIT >> $JTROOT/log/builds.log
 }
 
-# Define the CORENAME macro
-`eval parse_macros bash | grep CORENAME | tr -d \" `
+# Convert macros.def to environment variables
+eval `parse_macros bash`
 # lower case version
 corename=${CORENAME,,}
 
-if (eval parse_macros bash | grep JTFRAME_SKIP > /dev/null); then
+if [ -v JTFRAME_SKIP ]; then
     echo "Compilation skipped for $TARGET because of JTFRAME_SKIP"
     echo "Use -u JTFRAME_SKIP to override this."
     echo "PASS"
@@ -581,28 +581,28 @@ if [ $SKIP_COMPILE = FALSE ]; then
 		    | grep -v altera_cyclonev_pll\\.v \
 		    | grep -v "\.data_a.*has no driver or initial value" \
 		    | grep -v "\.waddr_a.*has no driver or initial value" \
-        | grep -v "\.we_a.*has no driver or initial value" \
-        | grep -v "Warning: RST port on the PLL" \
-        | grep -v "Warning: OUTCLK port on the PLL" \
-        | grep -v "Warning \(10762\)" > $AUX
-		    if [[ "$MACROS" == *MISTER_DEBUG_NOHDMI* ]]; then
-		        # There are many warnings coming from sys_top when HDMI is disabled, ignore them.
-		        grep -v sys_top.v $AUX
-		    else
-		        cat $AUX
-		    fi
-		    rm -f $AUX
-		    # Report timing
-		    grep --color=auto "Worst-case.*-[0-9.]*" "$LOG"
-		    if [[ $? = 0 && -z "$SKIPTIMING" ]]; then
-		        FAIL=1
-		        report FAIL
-		        echo FAIL $PRJ
-		    else
-		        echo PASS
-		        report PASS
-		    fi
-		fi
+            | grep -v "\.we_a.*has no driver or initial value" \
+            | grep -v "Warning: RST port on the PLL" \
+            | grep -v "Warning: OUTCLK port on the PLL" \
+            | grep -v "Warning \(10762\)" > $AUX
+            if [[ "$MACROS" == *MISTER_DEBUG_NOHDMI* ]]; then
+                # There are many warnings coming from sys_top when HDMI is disabled, ignore them.
+                grep -v sys_top.v $AUX
+            else
+                cat $AUX
+            fi
+            rm -f $AUX
+            # Report timing
+            grep --color=auto "Worst-case.*-[0-9.]*" "$LOG"
+            if [[ $? = 0 && -z "$SKIPTIMING" && ! -v JTFRAME_NOSTA ]]; then
+                FAIL=1
+                report FAIL
+                echo FAIL $PRJ
+            else
+                echo PASS
+                report PASS
+            fi
+        fi
     else
         # Simulation
         echo Preparing simulation netlist. Logfile:
@@ -650,7 +650,7 @@ if [ $SEED != 1 ]; then
 fi
 
 # Do not use [[ ]] in this if statement !!
-if is_mister_family || test $TARGET = neptuno || test $TARGET = mist_psd_gx150; then
+if is_mister_family || test $TARGET = neptuno || test $TARGET = mist_psd_gx150 || test $TARGET = mist_psd_cl120 || test $TARGET = mist_neptuno2; then
     echo $TARGET
     RBF=$PRJPATH/${TARGET}/$OUTPUTDIR/$corename.rbf
 elif [[ $TARGET = demist_deca || $TARGET = demist_de10lite ]]; then
@@ -709,11 +709,9 @@ if [[ "$GIT" = FALSE || "$FAIL" = 0  ]]; then
         BINFOLDER=$BINFOLDER/raw/Cores/jotego.$corename
     fi
     BINRBF=$BINFOLDER/$corename.$EXT
-
-    if [[ $TARGET = demist_zx3a* ]]; then        
+    if [[ $TARGET = demist_zx3a* ]]; then
         BINRBF=$BINFOLDER/$corename"_"$TARGET"_"$CORESTAMP.$EXT
     fi
-    
     mkdir -p $(dirname $BINRBF)
     cp -v $RBF $BINRBF || exit 1
 

@@ -379,7 +379,7 @@ class JTSim {
     SDRAM sdram;
     SimInputs sim_inputs;
     Download dwn;
-    int frame_cnt, last_VS;
+    int frame_cnt, last_LVBL, last_VS;
     // Video dump
     struct t_dump{
         ofstream fout;
@@ -644,9 +644,12 @@ SDRAM::SDRAM(UUT& _dut) : dut(_dut) {
             // Reset the rest of the SDRAM bank
             if( pos<BANK_LEN )
                 memset( (void*)&banks[k][pos], 0, BANK_LEN-pos);
-        } else {
-            if( k<=MAXBANK ) fprintf( stderr, "WARNING: (test.cpp)%s not found\n", fname);
         }
+#ifndef _LOADROM
+        else {
+            if( k<=MAXBANK ) fprintf( stderr, "WARNING: (test.cpp) %s not found\n", fname);
+        }
+#endif
     }
 }
 
@@ -671,10 +674,11 @@ void JTSim::reset( int v ) {
 }
 
 JTSim::JTSim( UUT& g, int argc, char *argv[]) :
-    game(g), sdram(g), dwn(g), sim_inputs(g), wav("snd.wav",48000,false)
+    game(g), sdram(g), dwn(g), sim_inputs(g), wav("test.wav",48000,false)
 {
     simtime   = 0;
     frame_cnt = 0;
+    last_LVBL = 0;
     last_VS   = 0;
     char *opt = getenv("CONVERT_OPTIONS");
     if ( opt!=NULL ) convert_options = opt;
@@ -823,12 +827,13 @@ void JTSim::clock(int n) {
             }
             // the display and fdisplay output of the verilog files
             if( (frame_cnt & 0x3f)==0 ) fprintf(stderr," - " ANSI_COLOR_YELLOW "%4d\n", frame_cnt);
-            sim_inputs.next();
 #ifdef _JTFRAME_SIM_DEBUG
             game.debug_bus++;
 #endif
         }
-        last_VS = game.VS;
+        if( !game.LVBL && last_LVBL ) sim_inputs.next();    // sim inputs are applied when entering blanking
+        last_LVBL = game.LVBL;
+        last_VS   = game.VS;
 
         // Video dump
         video_dump();

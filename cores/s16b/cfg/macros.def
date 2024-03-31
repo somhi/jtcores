@@ -1,8 +1,5 @@
 include ../../s16/cfg/macros.def
 
-[mist]
--JTFRAME_CREDITS
-
 [all]
 S16B
 
@@ -28,8 +25,19 @@ JTFRAME_PROM_START=0x440000
 
 # Redefine memory size
 VRAMW=19
-#[mist|sidi]
+
+[mist|sidi]
+-JTFRAME_CREDITS
+JTFRAME_NOSTA
 #JTFRAME_INPUT_RECORD
+
+[sidi]
+# it does not fit in SiDi anymore
+JTFRAME_SKIP
+# To compile core for SiDi:
+# Comment out previous line: #JTFRAME_SKIP
+# Set strategy 2 at modules/jtframe/target/sidi/sidi.qsf
+# Use Quartus 13.1
 
 # [mister]
 # JTFRAME_IOCTL_RD=75777

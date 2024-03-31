@@ -482,6 +482,10 @@ u_frame(
     .scan2x_de      ( scan2x_de      ),
 
     .osd_en         ( osd_en         ),
+	`else
+    .joy1_bus       (                ),
+    .joy2_bus       (                ),
+    .JOY_SELECT     (                ),
 	`endif   
     // DIP and OSD settings
     .enable_fm      ( enable_fm      ),

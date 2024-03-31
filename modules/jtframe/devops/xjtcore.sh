@@ -23,10 +23,17 @@ printf "%08x" 0x$BETAKEY | xxd -r -p > $JTUTIL/beta.bin
 ls -l $JTUTIL/beta.bin
 
 if [ -e $CORES/$CORENAME/cfg/macros.def ]; then
-    jtframe mra --skipROM $CORENAME
     # Beta key is enabled for cores listed in beta.yaml
     for TARGET in $*; do
+        if jtframe cfgstr $CORENAME --target=$TARGET --output bash | grep JTFRAME_SKIP; then
+            echo "Skipping $CORENAME for $TARGET because of JTFRAME_SKIP"
+            continue
+        fi
+        if [ $TARGET != pocket ]; then SKIPPOCKET=--skipPocket; else unset SKIPPOCKET; fi
+        jtframe mra --skipROM $SKIPPOCKET $CORENAME
         echo "Compiling for $TARGET"
         jtseed 4 $CORENAME -$TARGET --nodbg
+        # recover hard disk space
+        rm -rf $CORES/$CORENAME/$TARGET
     done
 fi
