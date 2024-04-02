@@ -48,4 +48,4 @@
 	url = git@github.com:jotego/pocket.git
 [submodule "cores/toki"]
 	path = cores/toki
-	url = https://github.com/vertrex/Arcade-JujuDensetsu_MiSTer
+	url = https://github.com/somhi/Arcade-JujuDensetsu_MiSTer
