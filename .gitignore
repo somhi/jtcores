@@ -52,8 +52,7 @@ core.def
 core.mod
 cores/*/mc2/*
 cores/*/mcp/*
-cores/*/mist/*
-cores/*/mister/*
+cores/*/mist*/*
 cores/*/neptuno/*
 cores/*/pocket/*
 cores/*/sch/*/*pdf
