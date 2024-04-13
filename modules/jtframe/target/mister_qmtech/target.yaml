@@ -11,7 +11,7 @@ here:
   - ../../hdl/clocking/jtframe_rst_sync.v
   - ../../hdl/clocking/jtframe_sync.v
   # Sys (MiSTer framework)
-  - ../mister/sys/sys.qip
+  - sys/sys.qip
   # PLLs
   - ../mister/sys/pll.qip
   - ../mister/pll6144/jtframe_pll6144.qip
