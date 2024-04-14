@@ -4,6 +4,7 @@ here:
   - jtframe_mist_top.sv
   - jtframe_mist.sv
   - jtframe_mist_base.v  
+  - osd.sv
   - mist_io.sdc
   # joystick direct support
   - jtframe_demistify_joy.v
@@ -37,7 +38,7 @@ target:
   - from: mist
     unless: POCKET
     get:
-      - osd.sv
+      #- osd.sv
       - rgb2ypbpr.v
   - from: demist_deca
     get:
