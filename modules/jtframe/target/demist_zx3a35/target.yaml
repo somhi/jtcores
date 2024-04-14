@@ -1,5 +1,5 @@
 here:
-  - ../demist_zx3a200/common.yaml
+  - common.yaml
   - ../demist_zx3a200/data_io.v
   - ../demist_zx3a200/jtframe_mist_clocks.v  
   - ../demist_zx3a200/jtframe_zxtres_top.vhd
