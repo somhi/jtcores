@@ -114,7 +114,7 @@ if [ -t 1 ]; then
 fi
 
 function is_mister_family {
-    if [[ $TARGET = mister || $TARGET = sockit || $TARGET = de1soc || $TARGET = de10std ]]; then
+    if [[ $TARGET = mister || $TARGET = sockit || $TARGET = de1soc || $TARGET = de10std || $TARGET = mistex ]]; then
         return 0
     else
         return 1
