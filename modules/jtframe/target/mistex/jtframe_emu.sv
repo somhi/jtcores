@@ -192,11 +192,11 @@ wire [1:0] dial_x, dial_y;
 
 ////////////////////   CLOCKS   ///////////////////
 
-wire clk_sys, clk_rom, clk96, clk96sh, clk48, clk48sh, clk24, clk6;
+wire clk_sys, clk_rom, clk96, clk96sh, clk48, clk48sh, clk24;
 wire game_rst, game_service, game_tilt, rst, rst_n;
 wire clk_pico;
 wire pxl2_cen, pxl_cen;
-wire rst96, rst48, rst24, rst6;
+wire rst96, rst48, rst24;
 wire pll_locked;
 reg  pll_rst = 1'b0;
 wire sys_rst;
@@ -244,7 +244,7 @@ end
     .outclk_0   ( clk48      ),
     .outclk_1   ( clk48sh    ),
     .outclk_2   ( clk24      ),
-    .outclk_3   ( clk6       ),
+    .outclk_3   (            ),
     .outclk_4   ( clk96      ),
     .outclk_5   ( clk96sh    )
 );
@@ -267,12 +267,6 @@ jtframe_rst_sync u_reset24(
     .rst_sync   ( rst24     )
 );
 
-jtframe_rst_sync u_reset6(
-    .rst        ( game_rst ),
-    .clk        ( clk6     ),
-    .rst_sync   ( rst6     )
-);
-
 `ifdef JTFRAME_SDRAM96
     assign clk_rom = clk96;
     assign clk_sys = clk96;
@@ -287,39 +281,40 @@ jtframe_rst_sync u_reset6(
 
 assign clk_pico = clk48;
 
-`ifndef JTFRAME_180SHIFT
-    `ifdef JTFRAME_SDRAM96
-    // assign SDRAM_CLK   = clk96sh;
-    assign SDRAM_CLK   = clk48sh;
-    `else
-    assign SDRAM_CLK   = clk48sh;
-    `endif
-`else
-    altddio_out
-    #(
-        .extend_oe_disable("OFF"),
-        .intended_device_family("Cyclone V"),
-        .invert_output("OFF"),
-        .lpm_hint("UNUSED"),
-        .lpm_type("altddio_out"),
-        .oe_reg("UNREGISTERED"),
-        .power_up_high("OFF"),
-        .width(1)
-    )
-    sdramclk_ddr
-    (
-        .datain_h(1'b0),
-        .datain_l(1'b1),
-        .outclock(clk_rom),
-        .dataout(SDRAM_CLK),
-        .aclr(1'b0),
-        .aset(1'b0),
-        .oe(1'b1),
-        .outclocken(1'b1),
-        .sclr(1'b0),
-        .sset(1'b0)
-    );
-`endif
+generate
+    if( `JTFRAME_180SHIFT == 0 ) begin
+        `ifdef JTFRAME_SDRAM96
+        assign SDRAM_CLK   = clk96sh;
+        `else
+        assign SDRAM_CLK   = clk48sh;
+        `endif
+    end else begin
+        altddio_out
+        #(
+            .extend_oe_disable("OFF"),
+            .intended_device_family("Cyclone V"),
+            .invert_output("OFF"),
+            .lpm_hint("UNUSED"),
+            .lpm_type("altddio_out"),
+            .oe_reg("UNREGISTERED"),
+            .power_up_high("OFF"),
+            .width(1)
+        )
+        sdramclk_ddr
+        (
+            .datain_h(1'b0),
+            .datain_l(1'b1),
+            .outclock(clk_rom),
+            .dataout(SDRAM_CLK),
+            .aclr(1'b0),
+            .aset(1'b0),
+            .oe(1'b1),
+            .outclocken(1'b1),
+            .sclr(1'b0),
+            .sset(1'b0)
+        );
+    end
+endgenerate
 
 ///////////////////////////////////////////////////
 
@@ -344,6 +339,7 @@ wire [15:0] joyana_l1, joyana_l2, joyana_l3, joyana_l4,
 
 wire        rst_req   = sys_rst | status[0] | buttons[1];
 wire [15:0] snd_left, snd_right;
+wire [ 5:0] snd_en, snd_vu;
 
 assign LED_DISK  = 2'b0;
 assign LED_POWER = 2'b0;
@@ -463,7 +459,8 @@ u_frame(
     .snd_sample     ( sample         ),
     .snd_rout       ( AUDIO_R        ),
     .snd_lout       ( AUDIO_L        ),
-
+    .snd_en         ( snd_en         ),
+    .snd_vu         ( snd_vu         ),
     // line-frame buffer
     .game_vrender   ( game_vrender   ),
     .game_hdump     ( game_hdump     ),
