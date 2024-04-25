@@ -232,6 +232,9 @@ set_global_assignment -name QIP_FILE game.qip
 # NeptUNO also shares the MIST macro
 set_global_assignment -name VERILOG_MACRO "MIST=1"
 
+#load option shown on OSD
+set_global_assignment -name VERILOG_MACRO "JTFRAME_OSD_LOAD=1"
+
 # set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to SPI_SCK
 set_global_assignment -name SEARCH_PATH "../hdl"
 set_global_assignment -name SEARCH_PATH "${MODULES}/jtframe/hdl/inc"

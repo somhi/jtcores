@@ -42,7 +42,7 @@ module jtframe_neptuno_io(
     output         ioctl_download,
     output   [7:0] ioctl_index,
     output         ioctl_wr,
-    output  [24:0] ioctl_addr,
+    output  [25:0] ioctl_addr,
     output   [7:0] ioctl_dout,
 
     output  [ 6:0] core_mod,
