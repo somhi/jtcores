@@ -74,8 +74,8 @@ set_location_assignment PIN_B21 -to SPI_SS4
 set_location_assignment PIN_D6 -to CONF_DATA0
 
 # UART
-set_location_assignment PIN_AF4 -to UART_TX
-set_location_assignment PIN_AE5 -to UART_RX
+set_location_assignment PIN_B2 -to UART_TX
+set_location_assignment PIN_C5 -to UART_RX
 
 set_location_assignment PIN_L25 -to SDRAM_A[0]
 set_location_assignment PIN_L26 -to SDRAM_A[1]
