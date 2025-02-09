@@ -1,10 +1,9 @@
-[all]
+[*]
 include ../../kicker/cfg/common.def
 
 CORENAME=JTROADF
 
 JTFRAME_BUTTONS=3
-JTFRAME_4PLAYERS
 JTFRAME_HEADER=8
 
 SND_START=0x10000

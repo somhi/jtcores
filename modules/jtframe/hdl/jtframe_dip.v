@@ -26,11 +26,8 @@ module jtframe_dip(
     output reg [12:0]  hdmi_arx,
     output reg [12:0]  hdmi_ary,
     output reg [ 1:0]  rotate,
-    output             rot_control, // rotate player control inputs
-    output reg         en_mixing,
-    output reg [ 2:0]  scanlines,
-    output reg         bw_en,
-    output reg         blend_en,
+    output reg         rot_osdonly,
+    output reg         rot_control, // rotate player control inputs
 
     output reg         enable_fm,
     output reg         enable_psg,
@@ -44,6 +41,8 @@ module jtframe_dip(
     inout              dip_flip,    // this might be set by the core
     output reg [ 1:0]  dip_fxlevel
 );
+
+parameter XOR_ROT=0;
 
 // "T0,RST;", // 15
 // "O1,Pause,OFF,ON;",
@@ -84,35 +83,16 @@ assign dip_flip    = ~status[1];
         `ifdef DIP_TEST
         assign dip_test = 0;
         `else
-        assign dip_test = ~game_test;
+        assign dip_test = game_test;
         `endif
     `else
-        assign dip_test = ~(status[10] | game_test); // assumes it is always active low
+        assign dip_test = ~status[10] & game_test; // assumes it is always active low
     `endif
 `else
-assign dip_test = ~game_test;
+assign dip_test = game_test;
 `endif
 
 wire [1:0] ar = status[17:16];    // only MiSTer
-`ifdef MISTER
-always @(*) begin
-    scanlines = status[5:3];
-`ifdef JTFRAME_OSD60HZ
-    if ( !status[19] ) scanlines=0;
-`endif
-    bw_en     = 0;      // Old TV filter disabled in MiSTer, is not needed anymore
-    blend_en  = 0;
-end
-`else
-always @(*) begin
-    case( status[4:3] )
-        2'd0: { scanlines, bw_en, blend_en } = { 3'd0, 2'd0 }; // pass thru
-        2'd1: { scanlines, bw_en, blend_en } = { 3'd0, 2'd1 }; // no scanlines, linear interpolation
-        2'd2: { scanlines, bw_en, blend_en } = { 3'd0, 2'd3 }; // analogue
-        2'd3: { scanlines, bw_en, blend_en } = { 3'd1, 2'd3 }; // analogue + scan lines
-    endcase // status[4:3]
-end
-`endif
 
 `ifdef POCKET
     assign osd_pause = osd_shown;
@@ -144,24 +124,28 @@ generate
             wire status_roten= ~status[2];
         `endif
         assign tate = (!MISTER || status_roten) && core_mod[0]; // 1 if screen is vertical (tate in Japanese)
-        assign rot_control = 1'b0;
+        initial rot_control = 0;
+        initial rot_osdonly = 0;
     end else begin // MiST derivativatives are always vertical
-        assign tate   = 1'b1 & core_mod[0];
-        assign rot_control = status[2];
+        assign tate   = core_mod[0];
+        always @(posedge clk) begin
+            rot_control <= (status[2]^XOR_ROT[0]) & tate & rot_osdonly;
+            rot_osdonly <= !status[13];
+        end
     end
 endgenerate
     wire   swap_ar = ~tate | ~core_mod[0];
 `else
-    wire   tate   = 1'b0;
-    assign rot_control = 1'b0;
-    wire   swap_ar = 1'b1;
+    wire    tate        = 0;
+    initial rot_control = 0;
+    initial rot_osdonly = 0;
+    wire    swap_ar     = 1;
 `endif
 
 // all signals that are not direct re-wirings are latched
 always @(posedge clk) begin
     rotate      <= { dip_flip ^ core_mod[2], tate && !rot_control }; // rotate[1] keeps the image upright regardless of dip_flip
     dip_fxlevel <= 2'b10 ^ status[7:6];
-    en_mixing   <= ~status[3];
     `ifndef JTFRAME_OSD_SND_EN
     enable_fm   <= 1;
     enable_psg  <= 1;
@@ -170,8 +154,8 @@ always @(posedge clk) begin
     enable_psg  <= ~status[8];
     `endif
     // only for MiSTer
-    hdmi_arx    <= (!ar) ? (swap_ar ? ARX : ARY) : (ar-2'd1);
-    hdmi_ary    <= (!ar) ? (swap_ar ? ARY : ARX) : 13'd0;
+    hdmi_arx    <= ar==0 ? (swap_ar ? ARX : ARY) : {11'd0,ar-2'd1};
+    hdmi_ary    <= ar==0 ? (swap_ar ? ARY : ARX) : 13'd0;
 
     `ifdef SIMULATION
         `ifdef DIP_PAUSE

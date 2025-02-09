@@ -29,7 +29,7 @@ localparam GAME=`JTCONTRA_PCB;
 
 wire        snd_irq;
 
-wire [ 7:0] snd_latch;
+wire [ 7:0] snd_latch, st_snd;
 
 wire [ 7:0] dipsw_a, dipsw_b;
 wire [ 3:0] dipsw_c;
@@ -47,11 +47,9 @@ assign { dipsw_c, dipsw_b, dipsw_a } = dipsw[19:0];
 assign debug_view = debug_mux;
 
 always @(posedge clk) begin
-    case( debug_bus[7:6] )
-        0: debug_mux <= st_video;
-        1: debug_mux <= dipsw_a;
-        2: debug_mux <= dipsw_b;
-        3: debug_mux <= {4'd0, dipsw_c};
+    case( debug_bus[7] )
+        0: debug_mux <= st_snd;
+        1: debug_mux <= st_video;
     endcase
 end
 
@@ -71,7 +69,6 @@ jtcontra_simloader u_simloader(
     .prio_latch ( prio_latch    )
 );
 `else
-`ifndef NOMAIN
 jtcontra_main #(.GAME(GAME)) u_main(
     .clk            ( clk24         ),        // 24 MHz
     .rst            ( rst24         ),
@@ -86,8 +83,8 @@ jtcontra_main #(.GAME(GAME)) u_main(
     .rom_data       ( main_data     ),
     .rom_ok         ( 1'b1          ),
     // cabinet I/O
-    .cab_1p         ( cab_1p        ),
-    .coin           ( coin          ),
+    .cab_1p         ( cab_1p[1:0]   ),
+    .coin           ( coin[1:0]     ),
     .joystick1      ({1'b1,joystick1}),
     .joystick2      ({1'b1,joystick2}),
     .service        ( service       ),
@@ -113,16 +110,6 @@ jtcontra_main #(.GAME(GAME)) u_main(
     .dipsw_b        ( dipsw_b       ),
     .dipsw_c        ( dipsw_c       )
 );
-`else
-// load a sound code for simulation
-assign snd_latch = 8'h22;
-reg pre_irq=0;
-initial begin
-    #100_000_000 pre_irq=1;
-end
-
-assign snd_irq = pre_irq;
-`endif
 `endif
 
 `ifndef NOVIDEO
@@ -178,15 +165,28 @@ jtcontra_video #(.GAME(GAME)) u_video (
 );
 `endif
 
-jtcontra_sound u_sound(
+`ifdef COMSC
+jtcomsc_sound `else  jtcontra_sound `endif
+u_sound(
     .clk        ( clk24         ), // 24 MHz
     .rst        ( rst24         ),
 `ifdef COMSC
     .cen_fm     ( cen3          ),
     .cen_fm2    ( cen1p5        ),
+    .fm         ( fm            ),
+    .psga       ( psga          ),
+    .psgb       ( psgb          ),
+    .psgc       ( psgc          ),
+    .psga_rcen  ( psga_rcen     ),
+    .psgb_rcen  ( psgb_rcen     ),
+    .psgc_rcen  ( psgc_rcen     ),
+    .pcm        ( pcm           ),
 `else
     .cen_fm     ( cen_fm        ),
     .cen_fm2    ( cen_fm2       ),
+    // Sound output
+    .fm_l       ( fm_r          ), // R/L channels reversed in
+    .fm_r       ( fm_l          ), // the real PCB too
 `endif
     // communication with main CPU
     .snd_irq    ( snd_irq       ),
@@ -201,11 +201,7 @@ jtcontra_sound u_sound(
     .pcm_cs     ( pcm_cs        ),
     .pcm_data   ( pcm_data      ),
     .pcm_ok     ( pcm_ok        ),
-    // Sound output
-    .snd_left   ( snd_right     ), // channels reversed in
-    .snd_right  ( snd_left      ), // the real PCB too
-    .sample     ( sample        ),
-    .peak       ( game_led      )
+    .st_dout    ( st_snd        )
 );
 
 endmodule

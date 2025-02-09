@@ -1,11 +1,29 @@
+/*  This file is part of JTFRAME.
+    JTFRAME program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    JTFRAME program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with JTFRAME.  If not, see <http://www.gnu.org/licenses/>.
+
+    Author: Jose Tejada Gomez. Twitter: @topapate
+    Date: 4-1-2025 */
+
 package mem
 
 import (
 	"fmt"
 	"math"
 	"os"
-	"strconv"
 	"strings"
+
+	"github.com/jotego/jtframe/macros"
 )
 
 func find_div( fin, fout float64) (int, int) {
@@ -26,17 +44,11 @@ func find_div( fin, fout float64) (int, int) {
     return int(best_n), int(best_d)
 }
 
-func make_clocks( macros map[string]string, cfg *MemConfig ) {
-	defined := func( key string ) bool {
-		_ ,e := macros[key]
-		return e
-	}
+func make_clocks( cfg *MemConfig ) {
 	max := func( a,b int ) int { if a>b { return a } else { return b } }
 
-	mode96 := defined("JTFRAME_SDRAM96") || defined("JTFRAME_CLK96")
-	aux, _ := macros["JTFRAME_MCLK"]
-	fmhz, _ := strconv.Atoi(aux)
-	fmhz *= 1000
+	mode96 := macros.IsSet("JTFRAME_SDRAM96") || macros.IsSet("JTFRAME_CLK96")
+	fmhz := macros.GetInt("JTFRAME_MCLK")
 
 	for key, list := range cfg.Clocks {
 		for k, v := range list {
@@ -44,7 +56,6 @@ func make_clocks( macros map[string]string, cfg *MemConfig ) {
 			ratio := 1.0
 			if mode96 { // clk is 96MHz
 				switch key {
-				case "clk6":  ratio = 0.125
 				case "clk24": ratio = 0.25
 				case "clk48": ratio = 0.5
 				case "clk96": ratio = 1.0
@@ -52,7 +63,6 @@ func make_clocks( macros map[string]string, cfg *MemConfig ) {
 				if v.ClkName == "clk96" { v.ClkName = "clk" }
 			} else { // clk is 48MHz
 				switch key {
-				case "clk6":  ratio = 0.25
 				case "clk24": ratio = 0.5
 				case "clk48": ratio = 1.0
 				case "clk96": ratio = 2.0

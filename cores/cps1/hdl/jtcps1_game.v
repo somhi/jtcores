@@ -20,7 +20,7 @@ module jtcps1_game(
     `include "jtframe_game_ports.inc" // see $JTFRAME/hdl/inc/jtframe_game_ports.inc
 );
 
-wire        clk_gfx, rst_gfx;
+wire        clk_gfx, rst_gfx, hold_rst;
 wire        snd_cs, adpcm_cs, main_ram_cs, main_vram_cs, main_rom_cs,
             rom0_cs, rom1_cs,
             vram_dma_cs;
@@ -68,11 +68,13 @@ wire        sclk, sdi, sdo, scs;
 assign { dipsw_c, dipsw_b, dipsw_a } = ~24'd0;
 `endif
 
+wire [15:0] fave;
 wire [ 1:0] dsn;
 wire        cen10b;
 wire        cpu_cen, cpu_cenb;
 wire        charger;
-wire        turbo, video_flip;
+wire        turbo, video_flip, filter_old;
+reg         rst_game;
 
 `ifdef JTCPS_TURBO
 assign turbo = 1;
@@ -84,22 +86,17 @@ assign turbo = 1;
     `endif
 `endif
 
-assign debug_view   = { 7'd0, dump_flag };
+assign snd_vu       = 0;
+assign filter_old   = dipsw[24];
+assign debug_view   = debug_bus[0] ? fave[7:0] : fave[15:8];
+    //{ 6'd0, dump_flag, filter_old };
 assign ba1_din=0, ba2_din=0, ba3_din=0,
        ba1_dsn=3, ba2_dsn=3, ba3_dsn=3;
 
-jtframe_cen96 u_pxl_cen(
-    .clk    ( clk96     ),    // 96 MHz
-    .cen16  ( pxl2_cen  ),
-    .cen12  (           ),
-    .cen8   ( pxl_cen   ),
-    // Unused:
-    .cen6   (           ),
-    .cen6b  (           )
-);
-assign clk_gfx = clk96;
-assign rst_gfx = rst96;
+assign clk_gfx  = clk;
+assign rst_gfx  = rst;
 
+always @(posedge clk) rst_game <= hold_rst | rst48;
 
 localparam REGSIZE=24;
 
@@ -107,10 +104,10 @@ localparam REGSIZE=24;
 wire busreq_cpu = busreq & ~turbo;
 wire busack_cpu;
 assign busack = busack_cpu | turbo;
-/* verilator tracing_off */
+/* verilator tracing_on */
 `ifndef NOMAIN
 jtcps1_main u_main(
-    .rst        ( rst48             ),
+    .rst        ( rst_game          ),
     .clk        ( clk48             ),
     .cen10      ( cpu_cen           ),
     .cen10b     ( cpu_cenb          ),
@@ -163,7 +160,8 @@ jtcps1_main u_main(
     .dip_test    ( dip_test         ),
     .dipsw_a     ( dipsw_a          ),
     .dipsw_b     ( dipsw_b          ),
-    .dipsw_c     ( dipsw_c          )
+    .dipsw_c     ( dipsw_c          ),
+    .fave        ( fave             )
 );
 `else
 assign ram_addr      = 0;
@@ -303,38 +301,38 @@ always @(negedge LVBL) begin
         //FAKE0+1: fake_latch <= 8'h2;
         //FAKE0+2: fake_latch <= 8'h0;
         // KOD
-        //FAKE0: fake_latch <= 8'h6;
+        FAKE0: fake_latch0 <= 8'h6;
         // Magic Sword
         //FAKE0: fake_latch <= 8'h1e;
         //FAKE1: fake_latch <= 8'h0;
         //FAKE1+1: fake_latch <= 8'h4;
         //FAKE1+2: fake_latch <= 8'h0;
         // SF2, Chun Li
-        FAKE0: begin
-            fake_latch1 <= 8'h00;
-            fake_latch0 <= 8'hf0;
-        end
+        // FAKE0: begin
+        //     fake_latch1 <= 8'h00;
+        //     fake_latch0 <= 8'hf0;
+        // end
 
-        FAKE0+10: begin
-            fake_latch1 <= 8'h00;
-            fake_latch0 <= 8'hff;
-        end
-        FAKE0+11: begin
-            fake_latch1 <= 8'h00;
-            fake_latch0 <= 8'hf7;
-        end
-        FAKE0+12: begin
-            fake_latch1 <= 8'h00;
-            fake_latch0 <= 8'hff;
-        end
-        FAKE0+13: begin
-            fake_latch1 <= 8'h00;
-            fake_latch0 <= 8'h06;
-        end
-        FAKE0+14: begin
-            fake_latch1 <= 8'h00;
-            fake_latch0 <= 8'hff;
-        end
+        // FAKE0+10: begin
+        //     fake_latch1 <= 8'h00;
+        //     fake_latch0 <= 8'hff;
+        // end
+        // FAKE0+11: begin
+        //     fake_latch1 <= 8'h00;
+        //     fake_latch0 <= 8'hf7;
+        // end
+        // FAKE0+12: begin
+        //     fake_latch1 <= 8'h00;
+        //     fake_latch0 <= 8'hff;
+        // end
+        // FAKE0+13: begin
+        //     fake_latch1 <= 8'h00;
+        //     fake_latch0 <= 8'h06;
+        // end
+        // FAKE0+14: begin
+        //     fake_latch1 <= 8'h00;
+        //     fake_latch0 <= 8'hff;
+        // end
 
         //default: fake_latch <= 8'hff;
     endcase
@@ -343,13 +341,15 @@ end
 
 reg [3:0] rst_snd;
 always @(posedge clk) begin
-    rst_snd <= { rst_snd[2:0], rst48 };
+    rst_snd <= { rst_snd[2:0], rst_game };
 end
 /* verilator tracing_off */
 jtcps1_sound u_sound(
     .rst            ( rst_snd[3]    ),
     .clk            ( clk48         ),
 
+    .filter_old     ( filter_old    ),
+    .dip_fxlevel    ( dip_fxlevel   ),
     // Interface with main CPU
     .snd_latch0     ( snd_latch0    ),
     .snd_latch1     ( snd_latch1    ),
@@ -370,7 +370,7 @@ jtcps1_sound u_sound(
     .left           ( snd_left      ),
     .right          ( snd_right     ),
     .sample         ( sample        ),
-    .peak           ( game_led      ),
+    .peak           ( snd_peak      ),
     .debug_bus      ( debug_bus     )
 );
 `else
@@ -396,6 +396,7 @@ jtcps1_sdram #(.REGSIZE(REGSIZE)) u_sdram (
     .clk_cpu     ( clk48         ),
     .LVBL        ( LVBL          ),
     .star_bank   ( star_bank     ),
+    .hold_rst    ( hold_rst      ),
 
     .ioctl_rom   ( ioctl_rom     ),
     .dwnld_busy  ( dwnld_busy    ),

@@ -1,5 +1,5 @@
 [global]
-mraauthor=["jotego"]
+author=["jotego"]
 
 [parse]
 sourcefile=[ "combatsc.cpp" ]
@@ -10,9 +10,21 @@ skip.setnames= [
     "combatscj"
 ]
 
+[Audio]
+volume = [
+    { machine="combatsc", value=0x22 },
+]    
+
 [buttons]
 names = [
     { names="Shoot/Attack,Jump" }
+]
+
+[header]
+frames = [
+    # the black frame is not symmetrical but 16 left/8 right
+    # so this will still leave 8 on the left side
+    { width=8 },
 ]
 
 [dipsw]

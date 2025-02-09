@@ -1,4 +1,4 @@
-/*  This file is part of JT_FRAME.
+/*  This file is part of JTFRAME.
     JTFRAME program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
@@ -118,13 +118,14 @@ end
 
 always @(*) begin
     result = acc >> (WC-(WOUT-WIN));
-    if ( result > {WOUT{1'b1}} ) result = { {AW-WOUT{1'b0}}, {WOUT{1'b1}} } ;
+    if ( result > { {AW-WOUT{1'b0}}, {WOUT{1'b1}}} ) result = { {AW-WOUT{1'b0}}, {WOUT{1'b1}} } ;
 end
-
+/* verilator lint_off WIDTHEXPAND */
 function [WOUT-1:0] ext; // extends the input from WIN to WOUT
     input [WIN-1:0] a;
     ext = { a, {WOUT-WIN{1'b0}} } | (a>>(2*WIN-WOUT)) ;
 endfunction
+/* verilator lint_on WIDTHEXPAND */
 
 // Mux it to avoid adding a clock cycle
 assign dout = enable ? pdout : ext(din);

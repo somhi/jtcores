@@ -23,9 +23,6 @@ module jtvigil_snd(
     input                fm_cen,
     input                v1,
 
-    input                enable_psg,
-    input                enable_fm,
-
     // From main
     input         [ 7:0] main_dout,
     input                latch_wr,
@@ -42,15 +39,11 @@ module jtvigil_snd(
     input                pcm_ok,
 
     input         [ 7:0] debug_bus,
-    output signed [15:0] snd,
-    output               sample,
-    output               peak
+    output signed [15:0] fm_l, fm_r,
+    output reg signed [ 7:0] pcm
 );
 
 `ifndef NOSOUND
-
-wire [7:0] FM_GAIN  = enable_fm  ? 8'h06 : 8'h0,
-           PCM_GAIN = enable_psg ? 8'h07 : 8'h0;
 
 wire [15:0] A;
 wire [ 7:0] ram_dout, fm_dout, cpu_dout, int_addr;
@@ -106,23 +99,21 @@ end
 
 // PCM controller
 
-reg  [7:0] pcm_good;
-reg  [1:0] pcm_rdy;
-reg        pcm_sample;
+wire signed [7:0] pcm_signed;
+reg         [1:0] pcm_rdy;
+
+assign pcm_signed = 8'h80 - pcm_data;
 
 always @(posedge clk, posedge rst) begin
     if( rst ) begin
-        pcm_addr   <= 16'd0;
-        cntcs_l    <= 0;
-        pcm_good   <= 0;
-        pcm_sample <= 0;
+        pcm_addr <= 16'd0;
+        cntcs_l  <= 0;
+        pcm      <= 0;
     end else begin
         cntcs_l    <= cnt_cs;
         pcm_rdy    <= { pcm_rdy[0], pcm_ok };
-        pcm_sample <= 0;
         if( pcm_rdy==2'b01 && pcm_ok ) begin
-            pcm_good   <= pcm_data;
-            pcm_sample <= 1;
+            pcm <= pcm_signed;
         end
         if( hi_cs ) pcm_addr[15:8] <= cpu_dout;
         if( lo_cs ) pcm_addr[ 7:0] <= cpu_dout;
@@ -189,51 +180,19 @@ jt51 u_jt51 (
     .ct1     (            ),
     .ct2     (            ),
     .irq_n   ( fm_intn    ),
-    .sample  ( sample     ),
+    .sample  (            ),
     .left    (            ),
     .right   (            ),
-    .xleft   ( left       ),
-    .xright  ( right      )
+    .xleft   ( fm_l       ),
+    .xright  ( fm_r       )
 );
-
-wire signed [15:0] pcm_lpf;
-wire signed [ 7:0] pcm_ac;
-
-assign pcm_ac = 8'h80 - pcm_good;
-
-jtframe_pole u_lpf(
-    .rst     ( rst        ),
-    .clk     ( clk        ),
-    .sample  ( pcm_sample ),
-    .sin     ( { pcm_ac, 8'd0 } ),
-    .a       ( 8'h60      ),    // coefficient, unsigned
-    .sout    ( pcm_lpf    )
-);
-
-jtframe_mixer u_mixer (
-    .rst   ( rst        ),
-    .clk   ( clk        ),
-    .cen   ( fm_cen     ),
-    .ch0   ( left       ),
-    .ch1   ( right      ),
-    .ch2   ( pcm_lpf    ),
-    .ch3   ( 16'd0      ),
-    .gain0 ( FM_GAIN    ),
-    .gain1 ( FM_GAIN    ),
-    .gain2 ( PCM_GAIN   ),
-    .gain3 ( 8'h00      ),
-    .mixed ( snd        ),
-    .peak  ( peak       )
-);
-
 `else
     initial rom_cs   = 0;
     assign  pcm_cs   = 0;
-    assign  snd      = 0;
-    assign  peak     = 0;
-    assign  sample   = 0;
+    assign  fm_l     = 0;
+    assign  fm_r     = 0;
+    assign  pcm      = 0;
     initial pcm_addr = 0;
     assign  rom_addr = 0;
 `endif
-
 endmodule

@@ -29,17 +29,23 @@ wire        cpu_rnw, cpu_irqn, dma_bsy, snd_wrn, mono, objreg_cs;
 wire [ 7:0] tilesys_dout, objsys_dout,
             obj_dout, pal_dout, cpu_dout,
             st_main, st_video, st_snd;
-wire [14:0] video_dumpa;
+wire        tilesys_rom_dtack;
+wire [15:0] cpu_addr;
+wire [15:0] video_dumpa;
 reg  [ 7:0] debug_mux;
-reg         paroda; // 1 for Parodius
+reg         simson, paroda, vendetta;
 
 assign debug_view = debug_mux;
 assign ram_din    = cpu_dout;
 assign ioctl_din  = video_dump;
-assign video_dumpa= ioctl_addr[14:0]-15'h80;
+assign video_dumpa= ioctl_addr[15:0]-16'h80;
 
 always @(posedge clk) begin
-    if( header && prog_we && prog_addr[1:0]==0 ) paroda <= prog_data[0];
+    if( header && prog_we && prog_addr[1:0]==0 ) begin
+        simson   <= prog_data[1:0]==0;
+        paroda   <= prog_data[1:0]==1;
+        vendetta <= prog_data[1:0]==2;
+    end
     case( debug_bus[7:6] )
         0: debug_mux <= st_main;
         1: debug_mux <= st_video;
@@ -48,16 +54,18 @@ always @(posedge clk) begin
     endcase
 end
 
-
-/* verilator tracing_on */
+/* verilator tracing_off */
 jtsimson_main u_main(
     .rst            ( rst           ),
     .clk            ( clk           ),
     .cen_ref        ( cen24         ), // should it be cen12?
     .cpu_cen        ( cpu_cen       ),
 
+    .simson         ( simson        ),
     .paroda         ( paroda        ),
+    .vendetta       ( vendetta      ),
 
+    .cpu_addr       ( cpu_addr      ),
     .cpu_dout       ( cpu_dout      ),
     .cpu_we         ( cpu_we        ),
 
@@ -79,10 +87,12 @@ jtsimson_main u_main(
 
     // From video
     .rst8           ( rst8          ),
+    .LVBL           ( LVBL          ),
     .irq_n          ( cpu_irqn      ),
     .dma_bsy        ( dma_bsy       ),
 
     .tilesys_dout   ( tilesys_dout  ),
+    .tilesys_rom_dtack ( tilesys_rom_dtack ),
     .objsys_dout    ( objsys_dout   ),
     .pal_dout       ( pal_dout      ),
     // To video
@@ -101,10 +111,10 @@ jtsimson_main u_main(
     .snd_wrn        ( snd_wrn       ),
     .mono           ( mono          ),
     // EEPROM
-    .nv_addr        ( nv_addr       ),
-    .nv_dout        ( nv_dout       ),
-    .nv_din         ( nv_din        ),
-    .nv_we          ( nv_we         ),
+    .nv_addr        ( nvram_addr    ),
+    .nv_dout        ( nvram_dout    ),
+    .nv_din         ( nvram_din     ),
+    .nv_we          ( nvram_we      ),
     // DIP switches
     .dip_test       ( dip_test      ),
     .dip_pause      ( dip_pause     ),
@@ -114,22 +124,19 @@ jtsimson_main u_main(
     .st_dout        ( st_main       )
 );
 
-/* verilator tracing_off */
+/* verilator tracing_on */
 jtsimson_sound u_sound(
     .rst        ( rst           ),
     .clk        ( clk           ),
     .cen_fm     ( cen_fm        ),
     .cen_fm2    ( cen_fm2       ),
 
-    .paroda     ( paroda        ),
-    .fxlevel    ( dip_fxlevel   ),
-    .enable_fm  ( enable_fm     ),
-    .enable_psg ( enable_psg    ),
+    .simson     ( simson        ),
     // communication with main CPU
     .snd_irq    ( snd_irq       ),
     .main_dout  ( cpu_dout      ),
     .main_din   ( snd2main      ),
-    .main_addr  ( main_addr[0]  ),
+    .main_addr  ( cpu_addr[0]   ),
     .main_rnw   ( snd_wrn       ),
     .mono       ( mono          ),
     // ROM
@@ -158,20 +165,21 @@ jtsimson_sound u_sound(
     .pcmd_cs    ( pcmd_cs       ),
     .pcmd_ok    ( pcmd_ok       ),
     // Sound output
-    .snd_l      ( snd_left      ),
-    .snd_r      ( snd_right     ),
-    .sample     ( sample        ),
-    .peak       ( game_led      ),
+    .snd_l      ( snd_l         ),
+    .snd_r      ( snd_r         ),
     // Debug
+    .snd_en     ( snd_en        ),
     .debug_bus  ( debug_bus     ),
     .st_dout    ( st_snd        )
 );
 
-/* verilator tracing_on */
+/* verilator tracing_off */
 jtsimson_video u_video (
     .rst            ( rst           ),
     .rst8           ( rst8          ),
     .clk            ( clk           ),
+
+    .simson         ( simson        ),
     .paroda         ( paroda        ),
 
     // base video
@@ -184,12 +192,13 @@ jtsimson_video u_video (
     .flip           ( dip_flip      ),
 
     // GFX - CPU interface
-    .cpu_addr       (main_addr[15:0]),
+    .cpu_addr       ( cpu_addr      ),
     .cpu_dout       ( cpu_dout      ),
     .cpu_we         ( cpu_we        ),
 
     .pal_dout       ( pal_dout      ),
     .tilesys_dout   ( tilesys_dout  ),
+    .tilesys_rom_dtack ( tilesys_rom_dtack ),
     .objsys_dout    ( objsys_dout   ),
 
     .pal_bank       ( pal_bank      ),
@@ -218,6 +227,7 @@ jtsimson_video u_video (
     .lyra_cs        ( lyra_cs       ),
     .lyrb_cs        ( lyrb_cs       ),
     .lyro_cs        ( lyro_cs       ),
+    .lyra_ok        ( lyra_ok       ),
     .lyro_ok        ( lyro_ok       ),
     // pixels
     .red            ( red           ),

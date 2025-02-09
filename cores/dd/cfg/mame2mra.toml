@@ -1,6 +1,6 @@
 [global]
 # info = [ {tag="mameversion", value="0229"} ]
-mraauthor=["jotego"]
+author=["jotego"]
 platform="jtdd"
 
 [parse]
@@ -24,6 +24,11 @@ skip.setnames=[
     "ddragon6809", "ddragon6809a"
 ]
 
+[Audio]
+volume = [
+    { machine="ddragon", value=0x50 },
+]
+
 [buttons]
 Names = [
     { names="Kick,Jump,Punch"},
@@ -32,7 +37,6 @@ Names = [
 [dipsw]
 # Flip screen not supported
 delete=[{names=["Unused","Unknown"]}]
-bitcnt = 16
 rename = [
     { name="Bonus Life", to="Bonus" },
 ]

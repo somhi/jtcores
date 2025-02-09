@@ -1,11 +1,16 @@
 [global]
-mraauthor=["jotego"]
+author=["jotego"]
 
 [parse]
 sourcefile=[ "commando.cpp" ]
 # The first byte in these games is encoded, opposite to
 # other games
 skip.Setnames=["sinvasnb","mercenario","commandob"]
+
+[Audio]
+volume = [
+    { machine="commando", value=0x28 },
+]
 
 [buttons]
 names=[

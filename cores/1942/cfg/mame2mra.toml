@@ -1,5 +1,5 @@
 [global]
-mraauthor=["jotego"]
+author=["jotego"]
 
 [parse]
 sourcefile=[ "1942.cpp", "vulgus.cpp", "higemaru.cpp" ]
@@ -10,6 +10,13 @@ skip.setnames=[
     "1942hc64",
     "1942gx64",
     "galagax",
+]
+
+[Audio]
+volume = [
+    { machine="1942", value=0x98 },
+    { machine="higemaru", value=0x75 },
+    { machine="vulgus", value=0xB6 },
 ]
 
 [dipsw]

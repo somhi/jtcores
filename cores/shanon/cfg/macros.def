@@ -4,6 +4,7 @@ CORENAME=JTSHANON
 GAMETOP=jtshanon_game_sdram
 SHANON=1
 -JTFRAME_LF_BUFFER
+JTFRAME_COLORW=6
 
 # System 16B Objects don't work
 # well with 64-bit bursts. I just
@@ -13,4 +14,8 @@ SHANON=1
 -JTFRAME_BA3_LEN=64
 
 # This system does not fit in MiST because of the 32kB used for road memory
+# and the 32kB used for NVRAM
 # Disabled the OSD logo or the credits won't make it fit
+
+[sidi128]
+-JTFRAME_LF_SDRAM_BUFFER

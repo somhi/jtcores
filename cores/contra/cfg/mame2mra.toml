@@ -1,5 +1,5 @@
 [global]
-mraauthor=["jotego"]
+author=["jotego"]
 
 [parse]
 sourcefile=[ "contra.cpp" ]
@@ -8,6 +8,11 @@ skip.setnames=[
     "contrab",
     "contrabj",
     "contrabj1",
+]
+
+[Audio]
+volume = [
+    { machine="contra", value=0x46 },
 ]
 
 [buttons]

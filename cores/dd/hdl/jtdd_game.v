@@ -40,7 +40,7 @@ reg                turbo_l=0;
 
 assign turbo      = `ifdef ALWAYS_TURBO 1 `else status[13] `endif ;
 assign dip_flip   = flip;
-assign debug_view = 0;
+assign debug_view = { 7'd0, turbo };
 assign scr_cs     = LVBL;
 assign main_dout  = cpu_dout;
 assign oram_we    = oram_cs & ~cpu_wrn;
@@ -52,7 +52,7 @@ assign cpu_cen    = turbo_l ? cen6 : cen3;
 always @(posedge clk) if( mcu_cen && cpu_cen ) turbo_l <= turbo;
 
 `ifndef NOMAIN
-/* verilator tracing_off */
+/* verilator tracing_on */
 // CPU and sub CPU from slower clock in order to
 // prevent timing error in 6809 CC bit Z
 jtdd_main u_main(
@@ -89,8 +89,8 @@ jtdd_main u_main(
     .scrhpos        ( scrhpos       ),
     .scrvpos        ( scrvpos       ),
     // cabinet I/O
-    .cab_1p         ( cab_1p        ),
-    .coin           ( coin          ),
+    .cab_1p         ( cab_1p[1:0]   ),
+    .coin           ( coin[1:0]     ),
     .joystick1      ( joystick1     ),
     .joystick2      ( joystick2     ),
     // BUS sharing
@@ -123,8 +123,8 @@ assign snd_latch = 8'd0;
 assign snd_irq   = 1'b0;
 assign mcu_rstb  = 1'b0;
 `endif
-/* verilator tracing_on */
 
+/* verilator tracing_on */
 jtdd_mcu u_mcu(
     .clk          (  clk             ),
     .mcu_rstb     (  mcu_rstb        ),
@@ -143,7 +143,8 @@ jtdd_mcu u_mcu(
     // PROM programming
     .rom_addr     (  mcu_addr        ),
     .rom_data     (  mcu_data        ),
-    .rom_cs       (  mcu_cs          )
+    .rom_cs       (  mcu_cs          ),
+    .rom_ok       (  mcu_ok          )
 );
 /* verilator tracing_off */
 jtdd_sound u_sound(
@@ -172,9 +173,10 @@ jtdd_sound u_sound(
     .adpcm1_data ( adpcm1_data   ),
     .adpcm1_ok   ( adpcm1_ok     ),
     // Sound output
-    .sound       ( snd           ),
-    .sample      ( sample        ),
-    .peak        ( game_led      )
+    .fm_l        ( fm_l          ),
+    .fm_r        ( fm_r          ),
+    .pcm_a       ( pcm_a         ),
+    .pcm_b       ( pcm_b         )
 );
 /* verilator tracing_off */
 jtdd_video u_video(

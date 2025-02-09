@@ -1,4 +1,5 @@
 #!/bin/bash
+CORE=$(basename $(dirname $(dirname $(pwd))))
 
 function try {
     while [ $# -gt 0 ]; do
@@ -16,24 +17,31 @@ INPUTS=
 
 rm -f *_lo.bin *_hi.bin pal.bin regsram.bin
 
-drop1 -l < rom.bin > rom_lo.bin
-drop1    < rom.bin > rom_hi.bin
+jtutil drop1 -l < rom.bin > rom_lo.bin
+jtutil drop1    < rom.bin > rom_hi.bin
 
 while [ $# -gt 0 ]; do
     case $1 in
         -nvram)
             if [ ! -e nvram.bin ]; then
-                if ! try nvram.old ~/.mame/nvram/ngp $JOTEGO/simfiles/ngp; then
+                if ! try nvram.old ~/.mame/nvram/ngp $JOTEGO/simfiles/$CORE; then
                     echo "Create a NVRAM file in MAME first"
                     exit 1
                 fi
             fi
-            go run fixnvram.go  # prevents running the setup
-            drop1 -l < nvram.bin > nvram_lo.bin
-            drop1    < nvram.bin > nvram_hi.bin
+            if [ -e fixnvram.go ]; then
+                go run fixnvram.go  # prevents running the setup
+            fi
+            jtutil drop1 -l < nvram.bin > nvram_lo.bin
+            jtutil drop1    < nvram.bin > nvram_hi.bin
             # Change reset vector, so it does not wait for the power-up button press
-            printf "\x18" | dd of=rom_hi.bin bs=1 seek=`printf "%d" 0x7f80` count=1 conv=notrunc
-            printf "\x00" | dd of=rom_lo.bin bs=1 seek=`printf "%d" 0x7f80` count=1 conv=notrunc
+            if [ $CORE = ngp ]; then
+                printf "\x18" | dd of=rom_hi.bin bs=1 seek=`printf "%d" 0x7f80` count=1 conv=notrunc
+                printf "\x00" | dd of=rom_lo.bin bs=1 seek=`printf "%d" 0x7f80` count=1 conv=notrunc
+            else
+                printf "\x20" | dd of=rom_hi.bin bs=1 seek=`printf "%d" 0x7f80` count=1 conv=notrunc
+                printf "\x4A" | dd of=rom_lo.bin bs=1 seek=`printf "%d" 0x7f80` count=1 conv=notrunc
+            fi
             OTHER="$OTHER -d NVRAM"
             ;;
         -cart)
@@ -62,7 +70,8 @@ while [ $# -gt 0 ]; do
             fi
             ;;
         -inputs)
-            OTHER="$OTHER $1"
+            OTHER="$OTHER $1 $2"
+            shift
             INPUTS=1;;
         *)
             OTHER="$OTHER $1";;
@@ -72,13 +81,12 @@ done
 
 if [ -z "$INPUTS" ]; then
     # skip the logo animation
-    cp nologo.hex sim_inputs.hex
-    OTHER="$OTHER -inputs"
+    OTHER="$OTHER -inputs nologo.hex"
 fi
 
 function split {
-    cat ${1}ram.bin | drop1    > ${1}_hi.bin
-    cat ${1}ram.bin | drop1 -l > ${1}_lo.bin
+    cat ${1}ram.bin | jtutil drop1    > ${1}_hi.bin
+    cat ${1}ram.bin | jtutil drop1 -l > ${1}_lo.bin
 }
 
 if [ -n "$SCENE" ]; then
@@ -93,4 +101,4 @@ if [ -n "$SCENE" ]; then
 fi
 
 echo jtsim $OTHER
-jtsim -sysname ngp -d JTFRAME_SIM_DIPS=0 $OTHER
+jtsim -sysname $CORE -d JTFRAME_SIM_DIPS=0 $OTHER

@@ -1,8 +1,13 @@
 [global]
-mraauthor=["jotego"]
+author=["jotego"]
 
 [parse]
 sourcefile=[ "fastlane.cpp" ]
+
+[Audio]
+volume=[
+    { machine="fastlane", value=0x30 },  
+]
 
 [buttons]
 names = [

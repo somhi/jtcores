@@ -131,8 +131,8 @@ jt1942_main u_main(
     .rom_data   ( main_data     ),
     .rom_ok     ( main_ok       ),
     // Cabinet input
-    .cab_1p      ( cab_1p       ),
-    .coin        ( coin         ),
+    .cab_1p      ( cab_1p[1:0]  ),
+    .coin        ( coin[1:0]    ),
     .service     ( service      ),
     .joystick1   ( joystick1[5:0] ),
     .joystick2   ( joystick2[5:0] ),
@@ -147,7 +147,7 @@ jt1942_main u_main(
     .dipsw_b    ( dipsw[15:8]   ),
     .coin_cnt   (               )
 );
-
+/* verilator tracing_off */
 jt1942_sound u_sound (
     .rst            ( rst            ),
     .sres_b         ( sres_b         ),
@@ -170,13 +170,11 @@ jt1942_sound u_sound (
     .rom_addr       ( snd_addr       ),
     .rom_data       ( snd_data       ),
     .rom_ok         ( snd_ok         ),
-    .snd            ( snd            ),
-    .sample         ( sample         ),
-    .peak           ( game_led       ),
-    // Unused
-    .snd_latch      (                )
+    // sound output
+    .psg0           ( psg0           ),
+    .psg1           ( psg1           )
 );
-/* verilator tracing_on */
+/* verilator tracing_off */
 jt1942_video u_video(
     .rst        ( rst           ),
     .clk        ( clk           ),

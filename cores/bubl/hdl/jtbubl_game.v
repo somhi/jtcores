@@ -89,8 +89,8 @@ jtbubl_main u_main(
     .main_latch     ( main_latch    ),
     .snd_rst        ( snd_rst       ),
     // cabinet I/O
-    .cab_1p         ( cab_1p        ),
-    .coin           ( coin          ),
+    .cab_1p         ( cab_1p[1:0]   ),
+    .coin           ( coin[1:0]     ),
     .joystick1      ( joystick1     ),
     .joystick2      ( joystick2     ),
     .service        ( service       ),
@@ -166,7 +166,6 @@ jtbubl_sound u_sound(
     .clk        ( clk           ), // 24 MHz
     .rstn       ( snd_rstn_eff  ),
     .cen3       ( cen3          ),
-    .fx_level   ( dip_fxlevel   ),
 
     .tokio      ( tokio         ),
     // communication with main CPU
@@ -183,9 +182,10 @@ jtbubl_sound u_sound(
     .rom_ok     ( snd_ok        ),
 
     // Sound output
-    .snd        ( snd           ),
-    .sample     ( sample        ),
-    .peak       ( game_led      )
+    .fm03       ( fm03          ),
+    .fm26       ( fm26          ),
+    .psg        ( psg           ),
+    .debug_bus  ( debug_bus     )
 );
 `else
 assign snd_cs   = 0;

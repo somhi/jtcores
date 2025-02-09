@@ -1,25 +1,29 @@
 [global]
-mraauthor=["jotego"]
+author=["jotego"]
 
 [parse]
 sourcefile=[ "kchamp.cpp" ]
+
+[Audio]
+volume = [
+    { machine="kchamp", value=0x1D },
+]
 
 [buttons]
 Names = [ { names="left(2),right(2),up(2),bottom(2)"} ]
 
 [dipsw]
-delete=[{names=["Unused","Unknown"]}]
+delete=[{names=["Unused","Unknown","Coin A","Coin B"]}]
 extra=[
     { name="Link joysticks", options="Off,On", bits="8" },
 ]
 
 [ROM]
 regions = [
-    { name="audiocpu", start="SND_START" },
-
-    { name="gfx1", start="CHAR_START", width=16, sort_even=true },
-    { name="gfx2", start="OBJ_START", no_offset=true },
-    { name="proms", start="JTFRAME_PROM_START" }
+    { name="audiocpu", start="JTFRAME_BA1_START" },
+    { name="gfx1",     start="JTFRAME_BA2_START", width=16, sort_even=true },
+    { name="gfx2",     start="JTFRAME_BA3_START", no_offset=true },
+    { name="proms",    start="JTFRAME_PROM_START" }
 ]
 
 order = [

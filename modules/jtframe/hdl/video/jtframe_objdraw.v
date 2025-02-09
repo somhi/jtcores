@@ -19,8 +19,10 @@
 // wrapper for jtframe_objdraw_gate that hides the
 // buffer data ports (buf_pred and buf_din that let
 // the core modify the data before storing it)
+// object width is always 16 pixels
 
 module jtframe_objdraw #( parameter
+    AW    =  9,
     CW    = 12,
     PW    =  8,
     ZW    =  6,
@@ -28,10 +30,13 @@ module jtframe_objdraw #( parameter
     ZENLARGE= 0,
     SWAPH =  0,
     HJUMP =  0,
+    HFIX  =  1,
     LATCH =  0,
     FLIP_OFFSET=0,
     KEEP_OLD  = 0,
     SHADOW    = 0,
+    SHADOW_PEN  = ALPHA,
+    SW        = 1,
     ALPHA     = 0,
     PACKED    = 0
 )(
@@ -40,12 +45,12 @@ module jtframe_objdraw #( parameter
     input               pxl_cen,
     input               hs,
     input               flip,
-    input        [ 8:0] hdump,
+    input    [AW-1:0]   hdump,
 
     input               draw,
     output              busy,
     input    [CW-1:0]   code,
-    input      [ 8:0]   xpos,
+    input    [AW-1:0]   xpos,
     input      [ 3:0]   ysub,
     // optional zoom, keep at zero for no zoom
     input    [ZW-1:0]   hzoom,
@@ -55,7 +60,7 @@ module jtframe_objdraw #( parameter
     input               vflip,
     input      [PW-5:0] pal,
 
-    output     [CW+6:2] rom_addr,
+    output     [CW+6:2] rom_addr, // {code,H,Y}
     output              rom_cs,
     input               rom_ok,
     input      [31:0]   rom_data,
@@ -66,6 +71,7 @@ module jtframe_objdraw #( parameter
     wire [PW-1:0] buf_d;
 
     jtframe_objdraw_gate #(
+        .AW             ( AW            ),
         .CW             ( CW            ),
         .PW             ( PW            ),
         .ZW             ( ZW            ),
@@ -73,10 +79,13 @@ module jtframe_objdraw #( parameter
         .ZENLARGE       ( ZENLARGE      ),
         .SWAPH          ( SWAPH         ),
         .HJUMP          ( HJUMP         ),
+        .HFIX           ( HFIX          ),
         .LATCH          ( LATCH         ),
         .FLIP_OFFSET    ( FLIP_OFFSET   ),
         .SHADOW         ( SHADOW        ),
+        .SW             ( SW            ),
         .KEEP_OLD       ( KEEP_OLD      ),
+        .SHADOW_PEN     ( SHADOW_PEN    ),
         .ALPHA          ( ALPHA         ),
         .PACKED         ( PACKED        )
     )u_gate(
@@ -91,6 +100,7 @@ module jtframe_objdraw #( parameter
         .code           ( code          ),
         .xpos           ( xpos          ),
         .ysub           ( ysub          ),
+        .trunc          ( 2'd0          ), // always 16 pixels
         .hzoom          ( hzoom         ),
         .hz_keep        ( hz_keep       ),
         .hflip          ( hflip         ),

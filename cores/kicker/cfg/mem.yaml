@@ -2,7 +2,6 @@ params:
   - { name: SCR_OFFSET, value: "`SCR_START >> 1" }
   - { name: OBJ_OFFSET, value: "`OBJ_START >> 1" }
   - { name: PCM_OFFSET, value: "`PCM_START >> 1" }
-
 clocks:
   clk24:
     - mul: 1
@@ -11,30 +10,30 @@ clocks:
         - cpu4
         - ti1
         - ti2
-
+audio: 
+  rsum: 220
+  rc: { r: 1k, c: 100n }
+  channels:
+    # equivalent filter
+    - { name: ti1, module: jt89, rsum: 220, rc: [{ r: 2k, c: 100n }, { r: 1.25k, c: 47n }] }
+    - { name: ti2, module: jt89, rsum: 220, rc: [{ r: 2k, c: 100n }, { r: 1.25k, c: 47n }] }
 download:
   post_addr: true
-  noswab: true
 sdram:
   banks:
-    -
-      buses:
-        -
-          name: scr
+    - buses:
+        - name: scr
           addr_width: 15
           data_width: 32
           offset: SCR_OFFSET
-        -
-          name: objrom
+        - name: objrom
           addr_width: 16
           data_width: 32
           offset: OBJ_OFFSET
-        -
-          name: pcm
+        - name: pcm
           addr_width: 16
           data_width: 8
           offset: PCM_OFFSET
-        -
-          name: main
+        - name: main
           addr_width: 16
           data_width: 8

@@ -1,4 +1,4 @@
-/*  This file is part of JT_FRAME.
+/*  This file is part of JTFRAME.
     JTFRAME program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
@@ -13,7 +13,7 @@
     along with JTFRAME.  If not, see <http://www.gnu.org/licenses/>.
 
     Author: Jose Tejada Gomez. Twitter: @topapate
-    Date: 28-8-20122 */
+    Date: 21-1-2023 */
 
 package cmd
 
@@ -37,8 +37,13 @@ var updateCmd = &cobra.Command{
 	Short: "Updates compiled files for cores or prepares GitHub action files",
 	Long: `JTUPDATE (c) Jose Tejada 2022-2023
 
-A tool to run parallel compilations of FPGA cores and
-update schematic files.
+Lists the tasks needed to:compilations
+
+- extract MRA files
+- compile FPGA cores
+- generate schematic PDF files
+
+This list is used by the jtupdate script to run the tasks in parallel.
 
 Arguments after -- are sent to jtcore directly.
 
@@ -60,6 +65,7 @@ Set --git to use \$JTBIN instead.
 		if up_all {
 			up_cfg.Targets["mist"]    = true
 			up_cfg.Targets["sidi"]    = true
+			up_cfg.Targets["sidi128"] = true
 			up_cfg.Targets["pocket"]  = true
 			up_cfg.Targets["mister"]  = true
 			up_cfg.Targets["neptuno"] = true
@@ -81,7 +87,7 @@ func init() {
 
 	target_flag := goflag.NewFlagSet("Target parser", goflag.ContinueOnError )
 	target_flag.Func( "target", "Adds a new target", func(t string) error { up_cfg.Targets[t] = true; return nil } )
-	flag.StringSliceVarP( &up_targets, "target","t",[]string{"mist","sidi","mister","pocket"}, "Comma separated list of targets" )
+	flag.StringSliceVarP( &up_targets, "target","t",[]string{"mist","sidi","sidi128","mister","pocket"}, "Comma separated list of targets" )
 
 	flag.AddGoFlagSet( target_flag )
 	// Ignored flags, which are handled on the script side

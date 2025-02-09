@@ -2,24 +2,31 @@
 
 JTFRAME maps the traditional MAME keyboard inputs to the game module. Apart from the player controls, the following keys are used:
 
-Key     |   Action
---------|-----------
-  1-4   |  1P, 2P, 3P, 4P
-  5-8   |  coin slots
-  P     |  Pause, press SERVICE (9) while in pause to advance one frame
-  9     |  Service
-  T     |  Tilt
- F2     |  Test mode
- F3     |  Reset
- F7-F10 |  gfx_en control see [debug.md](debug.md)
- +/-    |  debug_bus control see [debug.md](debug.md)
+Key           |   Action
+--------------|-----------
+  1-4         |  1P, 2P, 3P, 4P
+  5-8         |  coin slots
+  P           |  Pause, press SERVICE (9) while in pause to advance one frame
+  9           |  Service
+  T           |  Tilt
+ F2           |  Test mode
+ F3           |  Reset
+ F4           |  Increase volume
+ F5           |  Decrease volume
+
+ ## Keys available in debug builds
+
+ Key          | Action
+--------------|-----------
+ F7-F10       | gfx_en control see [debug.md](debug.md)
+ shift+F7-F12 | sound channel mute
+ +/-          | debug_bus control see [debug.md](debug.md)
 
  Most games ignore the *tilt* input. One that reacts to it is [Insector X](https://github.com/jotego/jtbubl), which shows the word *TILT* on screen and then reboots.
 
 # Joysticks
 
-By default JTFRAME supports two joysticks only and will try to connect to game modules based on this assumption. For games that need four joysticks, define the macro **JTFRAME_4PLAYERS**.
-Note that the registers containing the coin and start button inputs are always passed as 4 bits, but the game can just ignore the 2 MSB if it only supports two players.
+JTFRAME supports four joysticks. Registers containing the coin and start button inputs are 4 bit long, but the game can just ignore the 2 MSB if it only supports two players.
 
 The digital controllers (joysticks) are mapped as:
 
@@ -31,14 +38,28 @@ Bit  |  Action
  3   | up
  4+  | buttons
 
-Analog controllers are not connected to the game module by default. In order to get them connected, define the macro **JTFRAME_ANALOG** and then these input ports:
+If a different mapping is needed, it should be set via a JTFRAME_JOY macro. The analog stick is used to emulate a 32-way joystick via pulse-width modulation.
+
+Analog controllers are connected via ports:
 
 ```
-input   [15:0]  joyana1,
-input   [15:0]  joyana2,
+input   [15:0] joyana_l1, joyana_l2, joyana_l3, joyana_l4,
+input   [15:0] joyana_r1, joyana_r2, joyana_r3, joyana_r4,
 ```
 
 Analogue sticks uses 2-complement bytes to signal information: right and bottom are possitive (127 is the maximum). Left and top are negative (FFh minimum, 80h maximum)
+
+| Stick  | joyana_l1[7:0] |
+|:-------|:---------------|
+| center | 00             |
+| right  | 01 -> 7F       |
+| left   | FF -> 80       |
+
+| Stick  | joyana_l1[15:8] |
+|:-------|:----------------|
+| center | 00              |
+| down   | 01 -> 7F        |
+| up     | FF -> 80        |
 
 Support for 4-way joysticks (instead of 8-way joysticks) is enabled by setting high bit 1 of core_mod. See MOD BYTE.
 
@@ -93,10 +114,6 @@ The DB15 hardware from Antonio Villena can be enabled in the OSD. It will replac
 
 The macro **JTFRAME_NO_DB15** disables DB15 support.
 
-## Autofire
-
-It is not encouraged to provide a generic autofire option as it alters the gameplay. But, for some games that used a spinner (like Heavy Barrel), it helps controlling the character. By defining **JTFRAME_AUTOFIRE0** an option will appear on the OSD to enable autofire only for the first button (joystick bit 4). The autofire is triggered every 8 frames.
-
 # Trackball
 
 The popular upd4701 is modelled in [jt4701](../hdl/keyboard/jt4701.v). The main module **jt4701** represents the original chip and should work correctly when connected to a trackball. There are two helper modules: jt4701_dialemu and jt4701_dialemu_2axis.
@@ -137,7 +154,7 @@ The game *Block* of the [JTPANG](https://www.github.com/jotego/jtpang) can serve
 
 # Spinner
 
-Support is enabled with the **JTFRAME_DIAL** macro. This will add the *dial_x* and *dial_y* inputs to the game module. The core is expected to use the [jt4701](../hdl/keyboard/jt4701.v) to convert the dial signals to a number. Many arcade games expect an interface like the one provided by the **jt4701**, which needs dial signals to operate with and not an absolute spinner value.
+Support is enabled with the **JTFRAME_DIAL** macro. This will add dial sensitivity options to the OSD menu. The core is expected to use the [jt4701](../hdl/keyboard/jt4701.v) to convert the dial signals to a number. Many arcade games expect an interface like the one provided by the **jt4701**, which needs dial signals to operate with and not an absolute spinner value.
 
 Keeping the game module compatible with dial signals make it easier to hook directly to a bare spinner in the future. The **jt4701** does not clamp the values, so it cannot be connected to a paddle signal because after some turns, the paddle will get stuck at its limits. **jt4701** requires the dial signals. **jtframe_board** translates joystick and and spinner signals to dial pulses.
 

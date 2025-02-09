@@ -41,7 +41,6 @@ module jttmnt_video(
     output     [15:0] pal_dout,
     output     [ 7:0] tilesys_dout,
     output     [ 7:0] objsys_dout,
-    output reg        odtac,
     output reg        vdtac,
     input             pcu_cs,
     input             pal_cs,
@@ -85,25 +84,24 @@ module jttmnt_video(
     output     [ 7:0] blue,
 
     // Debug
-    input      [14:0] ioctl_addr,
+    input      [15:0] ioctl_addr,
     input             ioctl_ram,
-    output reg [ 7:0] ioctl_din,
+    output     [ 7:0] ioctl_din,
 
     input      [ 3:0] gfx_en,
     input      [ 7:0] debug_bus,
-    output reg [ 7:0] st_dout
+    output     [ 7:0] st_dout
 );
 
 `include "game_id.inc"
 
 wire [ 8:0] hdump, vdump, vrender, vrender1;
 wire [ 7:0] lyrf_pxl, st_scr, st_obj,
-            dump_scr, dump_obj, dump_pal,
+            dump_scr, dump_obj, dump_pal, dump_other,
             lyrf_col, lyra_col, lyrb_col,
-            opal,     cpu_d8,   mmr_pal,
-            scr_mmr;
+            opal,     cpu_d8,   pal_mmr,  obj_mmr, scr_mmr;
 wire [15:0] cpu_saddr;
-wire [11:0] lyra_pxl, lyrb_pxl, lyro_pxl;
+wire [11:0] lyra_pxl, lyrb_pxl, lyro_pxl, lyro_sort;
 wire [10:0] cpu_oaddr;
 wire [12:0] pre_f, pre_a, pre_b, ocode;
 reg  [13:0] ocode_eff;
@@ -111,8 +109,8 @@ reg  [ 7:0] opal_eff;
 wire [18:0] ca;
 wire        lyrf_blnk_n, lyra_blnk_n, lyrb_blnk_n, lyro_blnk_n,
             e, q, ormrd;
-wire        obj_irqn, obj_nmin, shadow, prio_we, gfx_we;
-reg         pre_odtac, pre_vdtac, sort_en, ioctl_mmr;
+wire        obj_irqn, obj_nmin, shadow, prio_we, gfx_we, pre_vdtac;
+reg         sort_en, ioctl_mmr;
 wire        cpu_weg;
 
 assign cpu_saddr = { cpu_addr[16:15], cpu_dsn[1], cpu_addr[14:13], cpu_addr[11:1] };
@@ -121,42 +119,32 @@ assign gfx_we    = prom_we & ~prog_addr[8];
 assign prio_we   = prom_we &  prog_addr[8];
 assign cpu_weg   = cpu_we && cpu_dsn!=3;
 assign cpu_d8    = ~cpu_dsn[1] ? cpu_dout[15:8] : cpu_dout[7:0];
+assign lyro_sort = { lyro_pxl[11:4],
+    sort_en ? lyro_pxl[3:0] : {lyro_pxl[0],lyro_pxl[1],lyro_pxl[2],lyro_pxl[3]} };
+assign dump_other= { 6'd0, cpu_prio };
 
-// Debug
-always @* begin
-    st_dout = debug_bus[5] ? st_obj : st_scr;
-    // VRAM dumps - 16+4+1 = 21kB +17 bytes = 22544 bytes
-    ioctl_mmr = 0;
-    if( ioctl_addr<'h4000 )
-        ioctl_din = dump_scr;  // 16 kB 0000~3FFF
-    else if( ioctl_addr<'h5000 )
-        ioctl_din = dump_pal;  // 4kB 4000~4FFF
-    else if( ioctl_addr<'h5800 )
-        ioctl_din = dump_obj;  // 2kB 5000~5800 (second half equal for 051960)
-    else if( ioctl_addr<'h5808 )
-        ioctl_din = scr_mmr;  // 8 bytes, MMR 5807
-    else if (ioctl_addr<'h5810) begin
-        ioctl_mmr = 1;
-        ioctl_din = dump_obj;  // 7 bytes, MMR 580F
-    end else
-        ioctl_din = { 6'd0, cpu_prio }; // 1 byte, 5810
-end
+jtriders_dump u_dump(
+    .clk            ( clk           ),
+    .dump_scr       ( dump_scr      ),
+    .dump_obj       ( dump_obj      ),
+    .dump_pal       ( dump_pal      ),
+    .pal_mmr        ( pal_mmr       ),
+    .scr_mmr        ( scr_mmr       ),
+    .obj_mmr        ( obj_mmr       ),
+    .other          ( dump_other    ),
+    .ioctl_addr     ( ioctl_addr    ),
+    .ioctl_din      ( ioctl_din     ),
+    .obj_amsb       (               ),
+
+    .debug_bus      ( debug_bus     ),
+    .st_scr         ( st_scr        ),
+    .st_dout        ( st_dout       )
+);
 
 wire [2:0] gfx_de;
 reg  [9:1] oa; // see sch object page (A column)
 
-always @(posedge clk) begin
-    if( pxl2_cen ) begin
-        if( q ) begin
-            pre_odtac <= 0;
-            pre_vdtac <= 0;
-        end
-        odtac <= pre_odtac;
-        vdtac <= pre_vdtac;
-    end
-    if( !objsys_cs /* || (ormrd && !lyro_ok) */ ) { pre_odtac, odtac } <= 1;
-    if( !tilesys_cs || (rmrd  && !lyra_ok) ) { pre_vdtac, vdtac } <= 1;
-end
+always @(posedge clk) vdtac <= pre_vdtac; // delay, since cpu_din also delayed
 
 function [31:0] sort( input [31:0] x, input sort_en );
     sort= sort_en ? {
@@ -286,7 +274,7 @@ jtaliens_scroll #(
     .gfx_cs     ( tilesys_cs),
     .rst8       ( rst8      ),
     .tile_dout  ( tilesys_dout ),
-
+    .cpu_rom_dtack( pre_vdtac ),
     // control
     .rmrd       ( rmrd      ),
     .hdump      ( hdump     ),
@@ -302,6 +290,10 @@ jtaliens_scroll #(
     .e          ( e         ),
 
     // color byte connection
+    .lyrf_extra (           ),
+    .lyra_extra (           ),
+    .lyrb_extra (           ),
+
     .lyrf_col   ( lyrf_col  ),
     .lyra_col   ( lyra_col  ),
     .lyrb_col   ( lyrb_col  ),
@@ -322,6 +314,8 @@ jtaliens_scroll #(
     .lyrf_data  ( sort(lyrf_data, sort_en) ),
     .lyra_data  ( sort(lyra_data, sort_en) ),
     .lyrb_data  ( sort(lyrb_data, sort_en) ),
+
+    .lyra_ok    ( lyra_ok ),
 
     // Final pixels
     .lyrf_blnk_n(lyrf_blnk_n),
@@ -383,8 +377,8 @@ jtaliens_obj u_obj(    // sprite logic
     // Debug
     .ioctl_addr ( ioctl_addr[10:0]),
     .ioctl_ram  ( ioctl_ram ),
-    .ioctl_mmr  ( ioctl_mmr ),
     .ioctl_din  ( dump_obj  ),
+    .dump_reg   ( obj_mmr   ),
 
     .gfx_en     ( gfx_en    ),
     .debug_bus  ( debug_bus ),
@@ -426,7 +420,7 @@ jttmnt_colmix #(.IOCTL_A0(1)) u_colmix(
     .lyrf_pxl   ( lyrf_pxl  ),
     .lyra_pxl   ( lyra_pxl  ),
     .lyrb_pxl   ( lyrb_pxl  ),
-    .lyro_pxl   ( lyro_pxl  ),
+    .lyro_pxl   ( lyro_sort ),
     .shadow     ( shadow    ),
 
     .red        ( red       ),
@@ -437,7 +431,7 @@ jttmnt_colmix #(.IOCTL_A0(1)) u_colmix(
     .ioctl_addr ( ioctl_addr[11:0]),
     .ioctl_ram  ( ioctl_ram ),
     .ioctl_din  ( dump_pal  ),
-    .dump_mmr   ( mmr_pal   ),
+    .dump_mmr   ( pal_mmr   ),
 
     .debug_bus  ( debug_bus )
 );

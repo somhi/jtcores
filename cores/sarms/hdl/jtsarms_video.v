@@ -188,7 +188,8 @@ jt1943_scroll #(
     .AS8MASK    ( 1'b0        ),
     .ROM_AW     ( SCRW        ),
     .PALETTE    ( 0           ),
-    .LAYOUT     ( LAYOUT      )
+    .LAYOUT     ( LAYOUT      ),
+    .MAPCACHE   ( 0           )
 ) u_scroll (
     .rst          ( rst           ),
     .clk          ( clk           ),
@@ -274,6 +275,7 @@ jtgng_obj #(
     .LVBL_obj   ( LVBL        ),
     .HINIT      ( HINIT       ),
     .flip       ( flip        ),
+    .alt        ( 1'b0        ),
     .V          ( V[7:0]      ),
     .H          ( H           ),
     // SDRAM interface

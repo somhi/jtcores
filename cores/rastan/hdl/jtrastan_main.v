@@ -127,13 +127,12 @@ module jtrastan_main(
     input         [ 7:0] dipsw_a,
     input         [ 7:0] dipsw_b
 );
-
+`ifndef NOMAIN
 wire [23:1] A;
 wire        cpu_cen, cpu_cenb;
 wire        UDSn, LDSn, RnW, allFC, ASn, VPAn, DTACKn;
 wire [ 2:0] FC, IPLn;
-reg         io_cs, out_cs, otport1_cs,
-            wdog_cs, inport_cs;
+reg         io_cs, out_cs, otport1_cs, inport_cs;
 reg  [ 7:0] cab_dout;
 reg  [15:0] cpu_din;
 wire [15:0] cpu_dout;
@@ -171,7 +170,6 @@ always @* begin
 
     out_cs     = 0;
     otport1_cs = 0;
-    wdog_cs    = 0;
     sn_we      = 0;
     sn_rd      = 0;
     inport_cs  = 0;
@@ -179,7 +177,7 @@ always @* begin
         case( {RnW, A[18:17]} )
             0: out_cs     = 1;
             1: otport1_cs = 1;
-            2: wdog_cs    = 1;
+            //2: wdog_cs    = 1;
             3: sn_we      = 1;
             4: inport_cs  = 1;
             7: sn_rd      = 1;
@@ -254,8 +252,7 @@ jtframe_68kdtack_cen #(.W(8)) u_dtack(
     .wait3      ( 1'b0      ),
     // Frequency report
     .fave       (           ),
-    .fworst     (           ),
-    .frst       (           )
+    .fworst     (           )
 );
 
 jtframe_m68k u_cpu(
@@ -288,5 +285,21 @@ jtframe_m68k u_cpu(
     .DTACKn     ( DTACKn      ),
     .IPLn       ( IPLn        ) // VBLANK
 );
-
+`else
+assign main_addr=0, main_dsn=0, main_dout=0, main_rnw=0;
+initial begin
+    rom_cs   = 0;
+    ram_cs   = 0;
+    vram_cs  = 0;
+    scr_cs   = 0;
+    pal_cs   = 0;
+    obj_cs   = 0;
+    obj_pal  = 0;
+    sn_we    = 0;
+    sn_rd    = 0;
+    sub_cs   = 0;
+    snd_rstn = 0;
+    mintn    = 0;
+end
+`endif
 endmodule

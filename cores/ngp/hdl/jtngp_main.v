@@ -47,6 +47,8 @@ module jtngp_main(
     input               flash0_rdy,
     input        [15:0] flash0_dout,
     output reg          flash1_cs,
+    input               flash1_rdy,
+    input        [15:0] flash1_dout,
 
     // Sound
     output reg          snd_nmi,
@@ -65,6 +67,11 @@ module jtngp_main(
     // NVRAM
     output       [ 1:0] nvram_we, ram1_we,
     input        [15:0] nvram_dout, ram1_dout,
+    // RTC dump
+    input        [ 6:0] ioctl_addr,
+    input        [ 7:0] ioctl_dout,
+    output reg   [ 7:0] ioctl_din,
+    input               ioctl_wr,
 
     // Debug
     input        [ 7:0] debug_bus,
@@ -82,8 +89,8 @@ wire        int4, rd;
 // reg         cpu_cen=0;
 reg  [ 3:0] pwr_cnt;
 wire [ 3:0] porta_dout;
-wire        bus_busy;
-wire [ 7:0] rtc_sec, rtc_min, rtc_hour;
+wire        bus_busy, rtc_iowr;
+wire [ 7:0] rtc_sec, rtc_min, rtc_hour, rtc_dump;
 wire [ 2:0] rtc_we;
 
 // NVRAM
@@ -97,13 +104,14 @@ wire [ 7:0] nvram0_dout, nvram1_dout;
 wire [ 7:0] st_cpu;
 
 // assign fwc       = (flash0_cs&~f0csl) | (flash1_cs&~f1csl) | ((flash0_cs||flash1_cs)&&addrl!=addr);
-assign bus_busy  = (flash0_cs & ~flash0_rdy);// | fwc; // the fwc part may not be needed
+assign bus_busy  = (flash0_cs & ~flash0_rdy) | (flash1_cs & ~flash1_rdy);// | fwc; // the fwc part may not be needed
 assign cpu_addr  = addr[20:1];
 // assign flash0_cs = map_cs[0], // in_range(24'h20_0000, 24'h40_0000);
 //        flash1_cs = map_cs[1]; // in_range(24'h80_0000, 24'hA0_0000);
 assign nvram_we  = {2{ram0_cs}} & we,
        ram1_we   = {2{ram1_cs}} & we,
        shd_we    = {2{ shd_cs}} & we;
+assign rtc_iowr  = ioctl_wr && ioctl_addr[6];
 // assign cpu_clk   = cpu_cen & clk;
 assign snd_irq   = porta_dout[3];
 assign rtc_we[2] = io_cs && we[0] && addr[5:1]==5'b01_010; // 80+14 = 94 - hours
@@ -199,6 +207,9 @@ always @(posedge clk, posedge rst) begin
             if( we[0] ) ngp_ports[ { addr[5:1],1'b0} ] <= cpu_dout[ 7:0];
             if( we[1] ) ngp_ports[ { addr[5:1],1'b1} ] <= cpu_dout[15:8];
         end
+        // dump ports to IOCTL
+        if( ioctl_wr && !ioctl_addr[6] ) ngp_ports[ioctl_addr[5:0]]<=ioctl_dout;
+        ioctl_din <= ioctl_addr[6] ? rtc_dump : ngp_ports[ioctl_addr[5:0]];
     end
 end
 
@@ -209,6 +220,7 @@ always @* begin
            ram1_cs   ? ram1_dout   :
            io_cs     ? io_dout     :
            flash0_cs ? flash0_dout :
+           flash1_cs ? flash1_dout :
            shd_cs    ? shd_dout    : 16'h0;
 end
 /* verilator tracing_off */
@@ -216,11 +228,16 @@ jtframe_rtc u_rtc(
     .rst    ( rst           ),
     .clk    ( clk           ),
     .cen    ( rtc_cen       ),   // 1-second clock enable
-    .din    ( cpu_dout[7:0] ),
+    .din    ( we[1] ? cpu_dout[15:8] : cpu_dout[7:0] ),
     .we     ( rtc_we        ),    // overwrite hour, min, sec
     .sec    ( rtc_sec       ),
     .min    ( rtc_min       ),
-    .hour   ( rtc_hour      )
+    .hour   ( rtc_hour      ),
+    // IOCTL dump
+    .ioctl_addr(ioctl_addr[1:0]),
+    .ioctl_dout( ioctl_dout ),
+    .ioctl_din ( rtc_dump   ),
+    .ioctl_wr  ( rtc_iowr   )
 );
 
 `ifdef SIMULATION
@@ -273,10 +290,12 @@ jt95c061 u_mcu(
     .st_dout    ( st_cpu    )
 ); // NOMAIN
 `else
-    assign { cpu_addr, cpu_dout, we, shd_we, flash0_cs, flash1_cs, snd_irq, nvram_we, ram1_we } = 0;
+    assign { cpu_addr, cpu_dout, we, shd_we, flash0_cs, flash1_cs,
+        snd_irq, nvram_we, ram1_we, halted, ioctl_din } = 0;
     initial begin
         snd_rstn = 1;
-        { poweron, gfx_cs, snd_nmi, snd_en, snd_latch, snd_dacl, snd_dacr, st_dout } = 0;
+        { poweron, gfx_cs, snd_nmi, snd_en, snd_latch,
+            snd_dacl, snd_dacr, st_dout } = 0;
     end
 `endif
 endmodule

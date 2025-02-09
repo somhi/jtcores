@@ -57,10 +57,10 @@ module jts16_main(
     output             sound_en,
     input              snd_ack,
     // cabinet I/O
-    input       [ 7:0] joystick1,
-    input       [ 7:0] joystick2,
-    input       [ 7:0] joystick3,
-    input       [ 7:0] joystick4,
+    input       [ 8:0] joystick1,
+    input       [ 8:0] joystick2,
+    input       [ 8:0] joystick3,
+    input       [ 8:0] joystick4,
     input       [15:0] joyana1,
     input       [15:0] joyana1b,
     input       [15:0] joyana2,
@@ -96,10 +96,6 @@ module jts16_main(
     // MCU enable and ROM programming
     input              mcu_en,
     input              mcu_prog_we,
-
-    // NVRAM - debug
-    input       [15:0] ioctl_addr,
-    output      [ 7:0] ioctl_din,
 
     // status dump - debug
     input       [ 7:0] debug_bus,
@@ -248,8 +244,8 @@ assign { flip, sound_en, video_en } = { ppib_dout[7], ~ppib_dout[5], ppib_dout[4
 //assign video_en = 1;
 
 always @(*) begin
-    sort1 = sort_joy( joystick1 );
-    sort2 = sort_joy( joystick2 );
+    sort1 = sort_joy( joystick1[7:0] );
+    sort2 = sort_joy( joystick2[7:0] );
 end
 
 reg  game_sdi, game_afightan; // game_passsht
@@ -268,10 +264,6 @@ jts16_trackball u_trackball(
 
     .right_en   ( game_sdi      ),
 
-    .joystick1  ( joystick1     ),
-    .joystick2  ( joystick2     ),
-    .joystick3  ( joystick3     ),
-    .joystick4  ( joystick4     ),
     .joyana1    ( joyana1       ),
     .joyana1b   ( joyana1b      ), // used by Heavy Champ
     .joyana2    ( joyana2       ),
@@ -328,10 +320,10 @@ always @(posedge clk, posedge rst) begin
                             GAME_PASSSHT: begin
                                 if( !last_iocs ) port_cnt <= port_cnt + 2'd1;
                                 case( port_cnt )
-                                    1: cab_dout <= pass_joy( joystick1 );
-                                    2: cab_dout <= pass_joy( joystick2 );
-                                    3: cab_dout <= pass_joy( joystick3 );
-                                    0: cab_dout <= pass_joy( joystick4 );
+                                    1: cab_dout <= pass_joy( joystick1[7:0] );
+                                    2: cab_dout <= pass_joy( joystick2[7:0] );
+                                    3: cab_dout <= pass_joy( joystick3[7:0] );
+                                    0: cab_dout <= pass_joy( joystick4[7:0] );
                                 endcase
                             end
                             GAME_AFIGHTAN: cab_dout <=
@@ -594,8 +586,7 @@ jtframe_68kdtack_cen #(.W(8),.MFREQ(50_347)) u_dtack(
     .wait3      ( 1'b0      ),
     // Frequency report
     .fave       ( fave      ),
-    .fworst     ( fworst    ),
-    .frst       ( rst       )
+    .fworst     ( fworst    )
 );
 
 // Shared by FD1094 and FD1089
@@ -703,32 +694,5 @@ always @(posedge clk) begin
         7: st_dout <= mcu_addr[15:8];
     endcase
 end
-
-// Debug
-`ifdef MISTER
-    `ifndef JTFRAME_RELEASE
-    `ifndef BETA
-    jts16_shadow u_shadow(
-        .clk        ( clk       ),
-        .clk_rom    ( clk_rom   ),
-
-        // Capture SDRAM bank 0 inputs
-        .addr       ( A[14:1]   ),
-        .char_cs    ( char_cs   ),    //  4k
-        .vram_cs    ( vram_cs   ),    // 32k
-        .pal_cs     ( pal_cs    ),     //  4k
-        .objram_cs  ( objram_cs ),  //  2k
-        .din        ( cpu_dout  ),
-        .dswn       ( {UDSWn, LDSWn} ),  // write mask -active low
-
-        // Let data be dumped via NVRAM interface
-        .ioctl_addr ( ioctl_addr),
-        .ioctl_din  ( ioctl_din )
-    );
-    `endif
-    `endif
-`else
-    assign ioctl_din = 0;
-`endif
 
 endmodule

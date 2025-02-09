@@ -1,9 +1,14 @@
 [global]
-mraauthor=["jotego"]
+author=["jotego"]
 
 [parse]
 sourcefile=[ "segaorun.cpp" ]
 skip.descriptions=[ "Out Run" ]
+
+[Audio]
+volume = [
+    { machine="shangon", value=0xD9 },
+]
 
 [buttons]
 Names = [

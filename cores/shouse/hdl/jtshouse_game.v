@@ -33,9 +33,10 @@ wire [ 8:0] hdump;
 wire [ 2:0] busy;
 reg  [ 7:0] dbg_mux;
 wire signed [10:0] pcm_snd;
-wire        prc_snd, snd_sel,
+wire        prc_snd, snd_sel, flip,
             cen_main, cen_sub,  cen_snd,  cen_mcu, cen_sndq;
-wire        obus_cs, ram_cs, dma_we, mcu_halt;
+wire        obus_cs, ram_cs, dma_we, mcu_halt, sndfix_n;
+wire [ 1:0] io_mode;
 
 // bit 16 of ROM T10 in sch. is inverted. T10 is also shorter (128kB only)
 // limiting to 128kB ROMs for now to allow address mirroring on Splatter
@@ -47,7 +48,7 @@ assign debug_view= dbg_mux;
 assign ram_addr  = baddr[14:0];
 assign ram_din   = bdout;
 // assign ram_dsn   = 2'b11; // this is ignored by the logic
-assign ram_we    =  ram_cs & ~brnw;
+assign ram_we    = ram_cs & ~brnw;
 assign vram_addr = baddr[14:1];
 assign vram_we   = {2{vram_cs & ~brnw}} & {baddr[0], ~baddr[0]};
 assign oram_we   = {2{dma_we}};
@@ -55,9 +56,8 @@ assign oram_we   = {2{dma_we}};
 assign sndram_addr = snd_addr[12:0];
 assign sndram_din  = sndcpu_dout;
 assign bdout16 = {2{bdout}};
-
-// To do:
-assign dip_flip = 0;
+assign dip_flip = flip;
+assign sndfix_n = dipsw[8];
 
 always @* begin
     case( debug_bus[7:6] )
@@ -69,7 +69,7 @@ always @* begin
     endcase
 end
 
-/* verilator tracing_on */
+/* verilator tracing_off */
 jtshouse_cenloop u_cen(
     .rst        ( rst       ),
     .clk        ( clk       ),
@@ -99,7 +99,9 @@ jtshouse_key u_key(
     .prog_en    ( header    ),
     .prog_wr    ( prog_we   ),
     .prog_addr  ( prog_addr[2:0] ),
-    .prog_data  ( prog_data )
+    .prog_data  ( prog_data ),
+
+    .io_mode    ( io_mode   )
 );
 /* verilator tracing_off */
 jtshouse_main u_main(
@@ -168,10 +170,15 @@ jtshouse_mcu u_mcu(
     .ram_dout   ( tri_mcu   ),
     .halted     ( mcu_halt  ),
     // cabinet I/O
-    .cab_1p     ( cab_1p    ),
-    .coin       ( coin      ),
+    .io_mode    (io_mode    ),
+    .cab_1p     (cab_1p[1:0]),
+    .coin       ( coin[3:0] ),
     .joystick1  ( joystick1 ),
     .joystick2  ( joystick2 ),
+    .joystick3  ( joystick3 ),
+    .joystick4  ( joystick4 ),
+    .dial1      ( dial_x    ),
+    .dial2      ( dial_y    ),
     .dipsw      ( dipsw[7:0]),
     .service    ( service   ),
     .dip_test   ( dip_test  ),
@@ -193,7 +200,7 @@ jtshouse_mcu u_mcu(
     .pcm_ok     ( pcm_ok    ),
     .bus_busy   ( busy[1]   ),
 
-    .snd        ( pcm_snd   ),
+    .snd        ( pcm       ),
     .debug_bus  ( debug_bus )
 );
 /* verilator tracing_on */
@@ -206,6 +213,7 @@ jtshouse_sound u_sound(
     .cen_fm     ( cen_fm    ),
     .cen_fm2    ( cen_fm2   ),
     .lvbl       ( LVBL      ),
+    .sndfix_n   ( sndfix_n  ),
 
     .bc30_cs    ( bc30_cs   ),
     .baddr      ( baddr[9:0]),
@@ -227,11 +235,10 @@ jtshouse_sound u_sound(
     .rom_ok     ( snd_ok    ),
     .bus_busy   ( busy[2]   ),
 
-    .pcm_snd    ( pcm_snd   ),
-    .left       ( snd_left  ),
-    .right      ( snd_right ),
-    .sample     ( sample    ),
-    .peak       ( game_led  ),
+    .fm_l       ( fm_l      ),
+    .fm_r       ( fm_r      ),
+    .cus30_l    ( cus30_l   ),
+    .cus30_r    ( cus30_r   ),
     .debug_bus  ( debug_bus )
 );
 /* verilator tracing_off */
@@ -242,7 +249,7 @@ jtshouse_triram u_triram(
 
     .snd_cen    ( cen_snd   ),
     .mcu_cen    ( cen_mcu   ),
-    .snd_sel    ( snd_sel   ),
+    .snd_sel    ( cen_sndq  ),
 
     .baddr      ( baddr[10:0]   ),
     .mcu_addr   ( eerom_addr    ),
@@ -280,6 +287,7 @@ jtshouse_video u_video(
     .lhbl       ( LHBL      ),
     .hs         ( HS        ),
     .vs         ( VS        ),
+    .flip       ( flip      ),
 
     .raster_irqn( firqn     ),
 
@@ -310,8 +318,6 @@ jtshouse_video u_video(
     // .tmap_data  ( tmap_dout ),
     .tmap_data  ( {tmap_dout[7:0],tmap_dout[15:8]} ),
     // Scroll mask readout (SDRAM)
-    .mask_cs    ( mask_cs   ),
-    .mask_ok    ( mask_ok   ),
     .mask_addr  ( mask_addr ),
     .mask_data  ( mask_data ),
     // Scroll tile readout (SDRAM)

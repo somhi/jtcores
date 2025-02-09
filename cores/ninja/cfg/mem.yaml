@@ -1,0 +1,3 @@
+include:
+  - core: cop
+game: cop

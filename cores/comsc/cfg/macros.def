@@ -1,4 +1,4 @@
-[all]
+[*]
 CORENAME=JTCOMSC
 JTCONTRA_PCB=1
 JTFRAME_CLK24
@@ -19,9 +19,13 @@ GFX2_START=0x140000
 PCM_START=0x1c0000
 JTFRAME_PROM_START=0x2C0000
 
-JTFRAME_DIPBASE=8
+[mist|sidi|mist_*]
+# OSD credits cannot be used when
+# DIP base is less than 13
+JTFRAME_OSD_NOCREDITS
 
-[mist|sidi|demist_*|mist_*]
+[demist_*]
+JTFRAME_DIPBASE=8
 # OSD credits cannot be used when
 # DIP base is less than 13
 JTFRAME_OSD_NOCREDITS
@@ -29,4 +33,3 @@ JTFRAME_OSD_NOCREDITS
 [mister]
 JTFRAME_ARX=4
 JTFRAME_ARY=3
-JTFRAME_OSD_NOLOAD

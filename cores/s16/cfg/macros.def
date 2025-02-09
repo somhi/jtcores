@@ -1,4 +1,4 @@
-[all]
+[*]
 CORENAME=JTS16
 GAMETOP=jts16_game_sdram
 
@@ -12,10 +12,9 @@ JTFRAME_ROTATE
 JTFRAME_CREDITS
 JTFRAME_CREDITS_PAGES=3
 JTFRAME_CREDITS_HSTART=48
-JTFRAME_BUTTONS=4
-JTFRAME_4PLAYERS
-JTFRAME_ANALOG
-JTFRAME_ANALOG_DUAL
+# mjleague uses 5 buttons, 5th button
+# not fully implemented
+JTFRAME_BUTTONS=5
 
 # Debug
 JTFRAME_STATUS
@@ -23,7 +22,6 @@ JTFRAME_STATUS
 # For audio section
 JTFRAME_CLK24
 JTFRAME_PLL=jtframe_pll6293
-
 # instance names
 JTS16_MAIN=jts16_main
 JTS16_SND=jts16_snd
@@ -57,32 +55,30 @@ GAME_EXCTLEAG=0x15
 GAME_BULLET  =0x16
 GAME_PASSSHT3=0x18
 GAME_SDI     =0x19
+GAME_TIMESCAN=0x1C
 GAME_AFIGHTAN=0x1D
 GAME_FANTZN2X=0x43
 
 # 64kB VRAM + 16-256 RAM
 VRAMW=16
-
+# 16kB NVRAM
+JTFRAME_IOCTL_RD=16384
 # OSD options
-JTFRAME_OSD_VOL
-JTFRAME_OSD_SND_EN
 JTFRAME_OSD_TEST
 
 [mister]
-JTFRAME_OSD_NOLOAD
+JTFRAME_MR_DDRLOAD
 #Do not enable JTFRAME_CHEAT unless a proper cheat.hex file exists
 #or it will break the core
 #JTFRAME_CHEAT
 JTFRAME_NOHQ2X
 
-# Needed for Action Fighter
-JTFRAME_ROTCCW
-
-# Debug - only mister
+# Debug - only mister (disabled in game module because of NVRAM)
 # JTFRAME_IOCTL_RD=43008
 
-[mist]
-JTFRAME_NOSTA
-
 [sidi]
-NOMCU
+# the core does not fit in these devices
+JTFRAME_SKIP
+
+[mist|sidi]
+-JTFRAME_CREDITS

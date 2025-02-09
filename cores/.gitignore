@@ -1,4 +1,6 @@
 *.qsf
 *.qpf
 *.f
-*.hex
+ref-*
+long
+trace.ses

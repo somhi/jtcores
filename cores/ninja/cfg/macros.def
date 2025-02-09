@@ -2,10 +2,15 @@ include ../../cop/cfg/macros.def
 
 CORENAME=JTNINJA
 JTFRAME_VERTICAL
-MCU=1
-JTFRAME_AUTOFIRE0
-NOHUC
 -NOTRACKBALL
+
+# 8751 instead of HUC6820
+MCU=1
+NOHUC
+MCU_START          =0x210000
+JTFRAME_PROM_START =0x210000
+PROM_START =0x228000
+
 
 JTFRAME_CREDITS
 
@@ -19,9 +24,3 @@ JTFRAME_CHEAT
 [mist|sidi]
 -JTFRAME_CREDITS
 JTFRAME_NOSTA
-
-[sidi]
-JTFRAME_SKIP
-# To compile core for SiDi:
-# Comment out previous line: #JTFRAME_SKIP
-# Comment out strategy 1 at modules/jtframe/target/sidi/sidi.qsf

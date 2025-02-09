@@ -46,7 +46,6 @@ module jttmnt_main(
     input                ram_ok,
     input                rom_ok,
     input                vdtac,
-    input                odtac,
     input                tile_irqn,
     input                tile_nmin,
 
@@ -101,7 +100,7 @@ assign cpu_we   = ~RnW;
 
 assign st_dout  = { rmrd, 1'd0, prio, div8, game_id };
 assign VPAn     = ~( A[23] & ~ASn );
-assign dtac_mux = (vram_cs | obj_cs) ? (vdtac & odtac) : DTACKn;
+assign dtac_mux = DTACKn | ~vdtac;
 assign snd_wrn  = ~(snd_cs & ~RnW);
 
 always @* begin
@@ -273,8 +272,7 @@ jtframe_68kdtack_cen #(.W(6),.RECOVERY(1)) u_dtack(
     .wait3      ( 1'b0      ),
     // Frequency report
     .fave       (           ),
-    .fworst     (           ),
-    .frst       (           )
+    .fworst     (           )
 );
 
 jtframe_m68k u_cpu(
@@ -313,12 +311,25 @@ jtframe_m68k u_cpu(
         framecnt <=framecnt+1;
         sndon    <=framecnt==10;
     end
+    reg [7:0] saved[0:0];
+    integer f,fcnt=0;
+
+    initial begin
+        f=$fopen("other.bin","rb");
+        if( f!=0 ) begin
+            fcnt=$fread(saved,f);
+            $fclose(f);
+            $display("Read %1d bytes for priority configuration", fcnt);
+            prio = saved[0][1:0];
+        end else begin
+            prio = 0;
+        end
+    end
     initial begin
         // sndon  = 0;
         obj_cs    = 0;
         pal_cs    = 0;
         pcu_cs    = 0;
-        prio      = 0;
         ram_cs    = 0;
         rmrd      = 0;
         rom_cs    = 0;

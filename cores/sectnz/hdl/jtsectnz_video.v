@@ -64,10 +64,6 @@ module jtsectnz_video#(
     output              LVBL,
     output              HS,
     output              VS,
-    // Palette PROMs
-    // input       [7:0]   prog_addr,
-    // input               prom_prior_we,
-    // input       [3:0]   prom_din,
     // Palette RAM
     input               blue_cs,
     input               redgreen_cs,
@@ -196,6 +192,7 @@ u_obj (
     .LVBL_obj   ( LVBL_obj    ),
     .HINIT      ( HINIT       ),
     .flip       ( flip        ),
+    .alt        ( 1'b0        ),
     .V          ( V[7:0]      ),
     .H          ( H           ),
     // SDRAM interface

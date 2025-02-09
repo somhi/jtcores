@@ -16,12 +16,14 @@ You can show your appreciation through
 * [Compilation](doc/compilation.md)
 * [The command line tool jtframe](doc/jtframe.md)
 * [Simulation](doc/sim.md)
+* [Unit tests](doc/simunit.md)
 * [Version history](doc/version.md)
 
 ## More Details
 * [MiST derivatives](doc/mist.md)
 * [CPUs](doc/cpus.md)
 * [SDRAM and SD card](doc/sdram.md)
+* [The MOD Byte](doc/core_mod.md)
 * [The OSD](doc/osd.md)
 * [Clocking](doc/clocks.md)
 * [Video options](doc/video.md)

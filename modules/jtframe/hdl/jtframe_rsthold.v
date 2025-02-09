@@ -20,12 +20,10 @@ module jtframe_rsthold(
     input      rst,
     input      clk,
     input      hold,
-    output reg rst_h
-`ifdef JTFRAME_CLK24 ,
+    output reg rst_h,
     input      rst24,
     input      clk24,
     output reg rst24_h
-`endif
 `ifdef JTFRAME_CLK48 ,
     input      rst48,
     input      clk48,
@@ -33,14 +31,14 @@ module jtframe_rsthold(
 `endif    
 );
 
-reg hold24, hold48;
-
 always @(negedge clk)   rst_h   <= rst   || hold;
-`ifdef JTFRAME_CLK24
+
+reg hold24;
 always @(posedge clk24) hold24  <= hold;
-always @(negedge clk24) rst24_h <= rst24 || hold24; `endif
+always @(negedge clk24) rst24_h <= rst24 || hold24;
 `ifdef JTFRAME_CLK48
+reg hold48;
 always @(posedge clk48) hold48  <= hold;
-always @(negedge clk48) rst48_h <= rst48 || hold; `endif
+always @(negedge clk48) rst48_h <= rst48 || hold48; `endif
 
 endmodule

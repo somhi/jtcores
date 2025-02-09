@@ -35,6 +35,7 @@ module jtaliens_scroll(
     input      [15:0] cpu_addr,
     input      [ 7:0] cpu_dout,
     output     [ 7:0] tile_dout,
+    output reg        cpu_rom_dtack,
     output            rst8,     // reset signal at 8th frame
 
     // control
@@ -59,13 +60,15 @@ module jtaliens_scroll(
     input      [31:0] lyra_data,
     input      [31:0] lyrb_data,
 
-    output     [ 7:0] lyrf_col,
-    output     [ 7:0] lyra_col,
-    output     [ 7:0] lyrb_col,
+    output     [ 7:0] lyrf_col, lyrf_extra,
+    output     [ 7:0] lyra_col, lyra_extra,
+    output     [ 7:0] lyrb_col, lyrb_extra,
 
     input      [ 7:0] lyrf_cg,
     input      [ 7:0] lyra_cg,
     input      [ 7:0] lyrb_cg,
+
+    input             lyra_ok,
 
     // Final pixels
     output            lyrf_blnk_n,
@@ -88,18 +91,21 @@ module jtaliens_scroll(
 
 parameter [8:0] HB_EXTRAL=0,
                 HB_EXTRAR=0;
+parameter       FULLRAM  =0; // Enables the three possible memory chips
 
 wire [ 7:0] tilemap_dout, tilerom_dout;
 wire [ 2:0] hsub_a, hsub_b;
 wire        hflip_en;
 
-assign lyrf_cs = gfx_en[0];
-assign lyra_cs = gfx_en[1];
-assign lyrb_cs = gfx_en[2];
+assign lyrf_cs =  gfx_en[0];
+assign lyra_cs = (gfx_en[1] & ~rmrd) | (rmrd & gfx_cs);
+assign lyrb_cs =  gfx_en[2];
 
 assign tile_dout = rmrd ? tilerom_dout : tilemap_dout;
 
-jt052109 u_tilemap(
+always @(posedge clk) cpu_rom_dtack <= ~(rmrd & gfx_cs) | lyra_ok;
+
+jt052109 #(.FULLRAM(FULLRAM)) u_tilemap(
     .rst        ( rst       ),
     .clk        ( clk       ),
     .pxl_cen    ( pxl_cen   ),
@@ -138,6 +144,10 @@ jt052109 u_tilemap(
     .lyra_addr  ( lyra_addr ),
     .lyrb_addr  ( lyrb_addr ),
 
+    .lyrf_extra ( lyrf_extra),
+    .lyra_extra ( lyra_extra),
+    .lyrb_extra ( lyrb_extra),
+
     .lyrf_col   ( lyrf_col  ),
     .lyra_col   ( lyra_col  ),
     .lyrb_col   ( lyrb_col  ),
@@ -172,8 +182,8 @@ jt051962 #(
     .lyrb_data  ( lyrb_data ),
 
     .lyrf_col   ( lyrf_cg   ),
-    .lyra_col   ( lyra_cg   ),
-    .lyrb_col   ( lyrb_cg   ),
+    .lyra_col   ( lyra_cg   ),  // lyra/b color byte get their nibbles
+    .lyrb_col   ( lyrb_cg   ),  // swapped inside this module
 
     // Fine grain scroll
     .hsub_a     ( hsub_a    ),

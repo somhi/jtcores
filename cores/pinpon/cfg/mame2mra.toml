@@ -1,6 +1,6 @@
 [global]
 # info = [ {tag="mameversion", value="0229"} ]
-mraauthor=["jotego"]
+author=["jotego"]
 
 [features]
 # debug=true
@@ -8,6 +8,11 @@ mraauthor=["jotego"]
 [parse]
 sourcefile=[ "pingpong.cpp" ]
 skip = { setnames=["merlinmm","cashquiz"], bootlegs=false }
+
+[Audio]
+volume = [
+    { machine="pingpong", value=0xC1 },
+]
 
 [buttons]
 names=[

@@ -1,5 +1,5 @@
 [global]
-mraauthor=["jotego"]
+author=["jotego"]
 
 [parse]
 sourcefile=[ "bublbobl.cpp" ]
@@ -25,6 +25,12 @@ skip.setnames=[
     # untested
     "sboblboble",
     "sboblboblf"
+]
+
+[Audio]
+volume = [
+    { machine="bublbobl", value=0x83 },
+    { machine="tokio", value=0xB2 },
 ]
 
 [header]

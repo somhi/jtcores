@@ -81,8 +81,6 @@ bit     |  meaning                | Enabled with macro
 12      | Credits/Pause           | JTFRAME_OSD_NOCREDITS (disables it)
 13-15   | Reserved for core use   | CORE_OSD (option char: D,E,F)
 16-17   | Aspect Ratio            | MiSTer only, visibility masked
-18      | Autofire button 0       | JTFRAME_AUTOFIRE0
-19      | 60 Hz option            | JTFRAME_OSD60HZ %%
 32-33   | Spinner sensitivity     | MiSTer/Pocket only
 37-38   | User output options     | MiSTer, selects DB15, UART, etc.
 39-40   | Rotate options (MiSTer) | JTFRAME_VERTICAL && JTFRAME_ROTATE (see below)
@@ -93,13 +91,9 @@ bit     |  meaning                | Enabled with macro
 49-52   | CRT H scaling factor    | MiSTer only, visibility masked
 53-56   | CRT H offset            | MiSTer only
 57-60   | CRT V offset            | MiSTer only
-61-63   | Reserved for forks      | JTFRAME forks can use these bits%
+61-63   |    -- free --           |
 
 Credits/Pause are handled differently in MiSTer vs MiST. For MiSTer, bit 12 sets whether credits will be displayed during pause. For MiST, bit 12 sets the pause. This difference is due to MiST missing key mapping, so I assume that MiST users depend more on the OSD for triggering the pause.
-
-% JTFRAME will not expand to use bits 61 to 63 in MiSTer, so developers creating custom forks can use them. This can be used to provide custom inputs, for instance.
-
-%% If JTFRAME_OSD60HZ is defined and the status word bit is low, MiSTer will disable the Scan FX options. This options should be used when the pixel clock is produced by a fractional divider, and thus it's very jittery. Some displays do good with this, some don't. This is less important for MiST because the PLL is less troublesome there. In MiSTer, all hell breaks loose in the HDMI subsystem for some game PLL settings.
 
 Option visibility in MiSTer is controlled in [jtframe_mister.sv](../target/mister/jtframe_mister.sv) using the `status_menumask` variable.
 
@@ -123,7 +117,7 @@ Only one CORE_OSD can be defined, but it an contain multiple values separated by
 
 ### Screen Rotation
 
-Screen rotation features require **JTFRAME_VERTICAL** to work. Remember to enable it first in the **.def** file. Screen rotation is done clockwise unless **JTFRAME_ROTCCW** is defined.
+Screen rotation features require **JTFRAME_VERTICAL** to work. Remember to enable it first in the **.def** file.
 
 Most arcade games have a flip setting among the DIP switches. This is the preferred method to enable it. When that is not possible, using the JTFRAME_OSD_FLIP will add the option to the OSD. The option will appear outside the *DIP Switches* submenu in the OSD.
 
@@ -150,29 +144,3 @@ The user port supports:
 -A simple UART, which can connect to the cheat engine (**JTFRAME_CHEAT**) or to the core **JTFRAME_UART**)
 
 Depending on the three macros above are set or unset, the OSD menu will show different options in MiSTer.
-
-## MOD BYTE
-
-Some JTFRAME features are configured via an ARC or MRA file. This is used to share a common RBF file among several games. The mod byte is introduced in the MRA file using this syntax:
-
-```
-    <rom index="1"><part> 01 </part></rom>
-```
-
-And in the ARC file with
-
-```
-MOD=1
-```
-
-This is the meaning for each bit. Note that core mod is only 7 bits in MiST.
-
-Bit  |    Meaning            | Default value
------|-----------------------|--------------
- 0   |  1 = vertical screen  |     1
- 1   |  1 = 4 way joystick   |     0
- 2   |  1 = CCW rotation     | Set by jtframe mra
- 3   |  1 = unfiltered dial  | Dial signals are sent raw to the core
- 4   |  1 = dial reverse     | Reverse dial direction
-
- The vertical screen bit is only read if JTFRAME was compiled with the **JTFRAME_VERTICAL** macro. This macro enables support for vertical games in the RBF. Then the same RBF can switch between horizontal and vertical games by using the MOD byte.

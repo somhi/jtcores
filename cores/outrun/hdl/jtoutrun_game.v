@@ -52,10 +52,7 @@ wire [ 1:0] sub_dsn;
 wire [15:0] sub_dout, road_dout, sub_din; // not SDRAM signals
 // Sound CPU
 wire [ 7:0] sndmap_din, sndmap_dout;
-wire        sndmap_rd, sndmap_wr, sndmap_pbf, snd_rstb, mute;
-
-// PCM
-wire        snd_clip;
+wire        sndmap_rd, sndmap_wr, sndmap_pbf, snd_rstb;
 
 // Protection
 wire        key_we, fd1089_we;
@@ -77,18 +74,23 @@ reg  [7:0] st_mux;
 
 assign { dipsw_b, dipsw_a } = dipsw[15:0];
 assign main_dswn            = {2{main_rnw}} | main_dsn;
-assign game_led             = snd_clip;
 assign debug_view           = st_dout;
 assign st_dout              = st_mux;
 
 // SDRAM memory
 assign main_addr = full_addr[18:1];
 assign gfx_cs    = LVBL || vrender==0 || vrender[8];
-assign xram_addr = { ram_cs, main_addr[15]&~ram_cs, main_addr[14:1] }; // RAM is mapped up
-assign xram_cs   = ram_cs | vram_cs;
+assign xram_addr = main_addr[15:1];
+assign xram_cs   = vram_cs;
 assign xram_din  = main_dout;
 assign xram_dsn  = main_dsn;
 assign xram_we   = ~main_rnw;
+// work RAM (non volatile)
+assign nvram_addr = 0;
+assign nvram_we   = 0;
+assign nvram_din  = 0;
+assign wram_we    = {2{ram_cs&~main_rnw}} & ~main_dsn;
+// Sub-CPU Work RAM
 assign subram_addr = sub_addr[14:1];
 assign subram_dsn  = sub_dsn;
 assign subram_we   = ~sub_rnw;
@@ -167,7 +169,6 @@ jtoutrun_main u_main(
     .video_en    ( video_en   ),
     .obj_cfg     ( obj_cfg    ),
     // Video circuitry
-    .vram_cs     ( vram_cs    ),
     .char_cs     ( char_cs    ),
     .pal_cs      ( pal_cs     ),
     .objram_cs   ( objram_cs  ),
@@ -178,8 +179,10 @@ jtoutrun_main u_main(
     .flip        ( flip       ),
     // RAM access
     .ram_cs      ( ram_cs     ),
-    .ram_data    ( xram_data  ),
-    .ram_ok      ( xram_ok    ),
+    .ram_data    ( wram_dout  ),
+    .vram_cs     ( vram_cs    ),
+    .vram_data   ( xram_data  ),
+    .vram_ok     ( xram_ok    ),
     // CPU bus
     .cpu_dout    ( main_dout  ),
     .dsn         ( main_dsn   ),
@@ -194,8 +197,8 @@ jtoutrun_main u_main(
     .joystick2   ( joystick2  ),
     .joyana1     ( joyana_l1  ),
     .joyana1b    ( joyana_r1  ),
-    .cab_1p      ( cab_1p     ),
-    .coin        (  coin      ),
+    .cab_1p      ( cab_1p[1:0]),
+    .coin        ( coin[1:0]  ),
     .service     ( service    ),
     // ROM access
     .addr        ( full_addr  ),
@@ -316,12 +319,6 @@ jtoutrun_snd u_sound(
     .cen_pcm    ( cen_pcm   ),   // 2MHz
     .game_id    ( game_id   ),
 
-    // options
-    .fxlevel    (dip_fxlevel),
-    .enable_fm  ( enable_fm ),
-    .enable_psg ( enable_psg),
-    .mute       ( mute      ),
-
     // Mapper device 315-5195
     .mapper_rd  ( sndmap_rd ),
     .mapper_wr  ( sndmap_wr ),
@@ -341,10 +338,10 @@ jtoutrun_snd u_sound(
     .pcm_ok     ( pcm_ok    ),
 
     // Sound output
-    .snd_left   ( snd_left  ),
-    .snd_right  ( snd_right ),
-    .sample     ( sample    ),
-    .peak       ( snd_clip  ),
+    .fm_l       ( fm_l      ),
+    .fm_r       ( fm_r      ),
+    .pcm_l      ( pcm_l     ),
+    .pcm_r      ( pcm_r     ),
     .debug_bus  ( debug_bus ),
     .st_dout    ( st_snd    )
 );
@@ -353,12 +350,13 @@ jtoutrun_snd u_sound(
     assign pcm_cs    = 0;
     assign pcm_addr  = 0;
     assign snd_addr  = 0;
-    assign snd_clip  = 0;
-    assign sample    = 0;
-    assign snd_left  = 0;
-    assign snd_right = 0;
+    assign fm_l      = 0;
+    assign fm_r      = 0;
+    assign pcm_l     = 0;
+    assign pcm_r     = 0;
     assign sndmap_rd = 0;
     assign sndmap_wr = 0;
+    assign sndmap_din= 0;
     assign st_snd    = 0;
 `endif
 /* verilator tracing_on */
@@ -467,7 +465,7 @@ jtoutrun_video u_video(
 
     // SD card dumps
     .ioctl_addr ( prog_addr ),
-    .ioctl_din  ( ioctl_din ),
+    .ioctl_din  ( ioctl_din ), // enable this for video debugging
     .ioctl_ram  ( ioctl_ram ),
     // Get some random data during start-up for the palette
     .prog_addr  ( prog_addr ),

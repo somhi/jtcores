@@ -1,5 +1,5 @@
 [global]
-mraauthor=["jotego"]
+author=["jotego"]
 overrule=[ {rotate=90} ]
 [features]
 # debug=true
@@ -10,6 +10,11 @@ sourcefile=[ "rocnrope.cpp" ]
 skip.setnames=[
     # bad colors
     "ropeman",
+]
+
+[Audio]
+volume = [
+    { machine="rocnrope", value=0xD6 },
 ]
 
 [buttons]

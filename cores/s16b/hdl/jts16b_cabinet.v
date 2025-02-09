@@ -35,12 +35,13 @@ module jts16b_cabinet(
     input             dip_test,
     input      [ 7:0] dipsw_a,
     input      [ 7:0] dipsw_b,
+    input      [ 7:0] dipsw_c,
 
     // cabinet I/O
-    input      [ 7:0] joystick1,
-    input      [ 7:0] joystick2,
-    input      [ 7:0] joystick3,
-    input      [ 7:0] joystick4,
+    input      [ 8:0] joystick1,
+    input      [ 8:0] joystick2,
+    input      [ 8:0] joystick3,
+    input      [ 8:0] joystick4,
     input      [15:0] joyana1,
     input      [15:0] joyana1b, // used by Heavy Champ
     input      [15:0] joyana2,
@@ -67,11 +68,12 @@ localparam [7:0] GAME_HWCHAMP =`GAME_HWCHAMP ,
                  GAME_EXCTLEAG=`GAME_EXCTLEAG,
                  GAME_BULLET  =`GAME_BULLET  ,
                  GAME_PASSSHT3=`GAME_PASSSHT3,
+                 GAME_TIMESCAN=`GAME_TIMESCAN,
                  GAME_AFIGHTAN=`GAME_AFIGHTAN,  // Action Fighter, analogue controls
                  GAME_SDI     =`GAME_SDI     ;
 
 reg  game_passsht, game_dunkshot, game_bullet,
-     game_exctleag, game_sdi, game_afightan;
+     game_exctleag, game_sdi, game_afightan, game_timescan;
 
 // Game ID registers
 always @(posedge clk) begin
@@ -80,6 +82,7 @@ always @(posedge clk) begin
     game_bullet   <= game_id==GAME_BULLET;
     game_exctleag <= game_id==GAME_EXCTLEAG;
     game_afightan <= game_id==GAME_AFIGHTAN;
+    game_timescan <= game_id==GAME_TIMESCAN;
     game_sdi      <= game_id==GAME_SDI || game_id==GAME_SDIBL;
 end
 
@@ -99,9 +102,9 @@ function [7:0] sort_joy( input [7:0] joy_in );
 endfunction
 
 always @(*) begin
-    sort1 = sort_joy( joystick1 );
-    sort2 = sort_joy( joystick2 );
-    sort3 = sort_joy( joystick3 );
+    sort1 = sort_joy( joystick1[7:0] );
+    sort2 = sort_joy( joystick2[7:0] );
+    sort3 = sort_joy( joystick3[7:0] );
 end
 
 wire [8:0] joyana_sum = {joyana1[15], joyana1[15:8]} + {joyana2[15], joyana2[15:8]};
@@ -126,10 +129,6 @@ jts16_trackball u_trackball(
 
     .right_en   ( game_sdi      ),
 
-    .joystick1  ( joystick1     ),
-    .joystick2  ( joystick2     ),
-    .joystick3  ( joystick3     ),
-    .joystick4  ( joystick4     ),
     .joyana1    ( joyana1       ),
     .joyana1b   ( joyana1b      ), // used by Heavy Champ
     .joyana2    ( joyana2       ),
@@ -230,8 +229,9 @@ always @(posedge clk, posedge rst) begin
                             sort1;
                     end
                     2: begin
-                        if( game_bullet ) cab_dout <= sort3_bullet;
-                        if( game_sdi    ) cab_dout <= { sort2[7:4], sort1[7:4] };
+                        if( game_timescan ) cab_dout <= dipsw_c;
+                        if( game_bullet   ) cab_dout <= sort3_bullet;
+                        if( game_sdi      ) cab_dout <= { sort2[7:4], sort1[7:4] };
                         if( game_afightan )
                             cab_dout <=  // right side of driving wheel (hot one)
                               ~(joyana1[7] ? 8'h00 :
@@ -281,10 +281,10 @@ always @(posedge clk, posedge rst) begin
                     GAME_PASSSHT2: begin // Passing Shot (J)
                         //if( A[9:8]== 2'b10 ) begin
                             case( A[2:1] )
-                                0: cab_dout <= pass_joy( joystick1 );
-                                1: cab_dout <= pass_joy( joystick2 );
-                                2: cab_dout <= pass_joy( joystick3 );
-                                3: cab_dout <= pass_joy( joystick4 );
+                                0: cab_dout <= pass_joy( joystick1[7:0] );
+                                1: cab_dout <= pass_joy( joystick2[7:0] );
+                                2: cab_dout <= pass_joy( joystick3[7:0] );
+                                3: cab_dout <= pass_joy( joystick4[7:0] );
                             endcase
                         //end
                     end

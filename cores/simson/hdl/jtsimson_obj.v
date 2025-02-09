@@ -16,11 +16,14 @@
     Version: 1.0
     Date: 24-7-2023 */
 
-module jtsimson_obj(
+module jtsimson_obj #(parameter
+    RAMW   = 12,
+    XMEN   = 0
+)(
     input             rst,
     input             clk,
 
-    input             paroda,
+    input             simson,
 
     input             pxl_cen,
     input             pxl2_cen,
@@ -34,11 +37,15 @@ module jtsimson_obj(
     // CPU interface
     input             ram_cs,
     input             reg_cs,
-    input             cpu_we,
-    input      [15:0] cpu_dout, // 16-bit interface
-    input      [13:1] cpu_addr, // 16 kB (?)
+    input             mmr_we,
+    input      [ 3:0] mmr_addr,
+    input      [15:0] mmr_din,
+    input      [ 1:0] mmr_dsn,
+
+    input      [15:0] ram_din, // 16-bit interface
+    input      [ 1:0] ram_we,
+    input    [RAMW:1] ram_addr,
     output     [15:0] cpu_din,
-    input      [ 1:0] cpu_dsn,
     output            dma_bsy,
 
     // ROM addressing
@@ -54,6 +61,7 @@ module jtsimson_obj(
     output     [ 8:0] pxl,
 
     // debug
+    input      [ 3:0] gfx_en,
     input             ioctl_ram,
     input      [13:0] ioctl_addr,
     output     [ 7:0] dump_ram,
@@ -61,7 +69,7 @@ module jtsimson_obj(
     input      [ 7:0] debug_bus
 );
 
-wire [ 1:0] ram_we, pre_shd;
+wire [ 1:0] pre_shd;
 wire [ 3:0] pen_eff;
 wire [15:0] ram_data, dma_data;
 wire [22:2] pre_addr;
@@ -74,20 +82,20 @@ wire        dr_start, dr_busy;
 wire [15:0] code;
 wire [ 9:0] attr;     // OC pins
 wire        hflip, vflip, hz_keep, pre_cs;
-wire [ 8:0] hpos;
+wire [ 9:0] hpos;
 wire [ 3:0] ysub;
-wire [ 9:0] hzoom;
+wire [11:0] hzoom;
 wire [31:0] sorted;
 wire        pen15;
 
-wire irq_en, scr_hflip, scr_vflip;
+wire scr_hflip, scr_vflip;
 
-assign ram_we    = {2{cpu_we&ram_cs}} & ~{cpu_dsn[0],cpu_dsn[1]};
 assign rom_cs    = ~objcha_n | pre_cs;
-assign rom_addr  = objcha_n ? { pre_addr[21:7], pre_addr[5:2], pre_addr[6] } :
-                              rmrd_addr[21:2];
-assign cpu_din   = objcha_n ? ram_data :
-                   rmrd_addr[1] ? rom_data[31:16] : rom_data[15:0];
+assign rom_addr  = !objcha_n ? rmrd_addr[21:2] :
+    { pre_addr[21:7], pre_addr[5:2], pre_addr[6] };
+
+assign cpu_din   = !objcha_n ? rmrd_addr[1] ? rom_data[31:16] : rom_data[15:0] :
+                    ram_data;
 
 // Shadow understanding so far
 // The 053251 color mixer lets shadow pass based on numerical priority only
@@ -102,13 +110,9 @@ assign cpu_din   = objcha_n ? ram_data :
 // 053244 (parodius) has 7 palette bits, top 2 used for priority
 assign pen15   = &pre_pxl[3:0];
 assign pen_eff = (pre_pxl[15:14]==0 || !pen15) ? pre_pxl[3:0] : 4'd0; // real color or 0 if shadow
-assign shd     = {pre_pxl[15]&~paroda, pre_pxl[14]} & {2{pen15}};
-assign prio    =  paroda ? {3'd0,pre_pxl[10:9]} : pre_pxl[13:9];
-assign pxl     = {pre_pxl[8:4], pen_eff};
-
-// assign       { shd, prio, pxl } =
-//     paroda ? { 1'b0, pre_pxl[14] & pen15,   pre_pxl[11:10], 2'd0, pre_pxl[9:4], pen_eff };
-//              { pre_pxl[15:14] & {2{pen15}}, pre_pxl[13:12], pre_pxl[11:4],      pen_eff };
+assign shd     =  ~(pre_pxl[15:14] & {2{pen15}});
+assign prio    =  pre_pxl[13:9];
+assign pxl     = gfx_en[3] ? {pre_pxl[8:4], pen_eff} : 9'd0;
 
 assign sorted = {
     rom_data[15], rom_data[11], rom_data[7], rom_data[3], rom_data[31], rom_data[27], rom_data[23], rom_data[19],
@@ -117,19 +121,19 @@ assign sorted = {
     rom_data[12], rom_data[ 8], rom_data[4], rom_data[0], rom_data[28], rom_data[24], rom_data[20], rom_data[16]
 };
 
-jt053246 u_scan(    // sprite logic
+jt053246 #(.XMEN(XMEN))u_scan(    // sprite logic
     .rst        ( rst       ),
     .clk        ( clk       ),
     .pxl2_cen   ( pxl2_cen  ),
     .pxl_cen    ( pxl_cen   ),
 
-    .k44_en     ( paroda    ),
+    .simson     ( simson    ),
     // CPU interface
     .cs         ( reg_cs    ),
-    .cpu_we     ( cpu_we    ),
-    .cpu_addr   (cpu_addr[3:1]),
-    .cpu_dsn    ( cpu_dsn   ),
-    .cpu_dout   ( cpu_dout  ),
+    .cpu_we     ( mmr_we    ),
+    .cpu_addr   ( mmr_addr  ),
+    .cpu_dout   ( mmr_din   ),
+    .cpu_dsn    ( mmr_dsn   ),
     .rmrd_addr  ( rmrd_addr ),
 
     // External RAM
@@ -168,44 +172,37 @@ jt053246 u_scan(    // sprite logic
 );
 
 jtframe_objdraw #(
-    .CW(16),.PW(4+10+2),.LATCH(1),.SWAPH(1),
-    .ZW(10),.ZI(6),.ZENLARGE(1),
-    .FLIP_OFFSET(9'h12),.KEEP_OLD(1)
+    `ifdef XMEN .SHADOW(1),.SHADOW_PEN (4'd15), `endif
+    .AW(10),.CW(16),.PW(4+10+2),.LATCH(1),.SWAPH(1),
+    .ZW(12),.ZI(6),.ZENLARGE(1),.SW(2),.FLIP_OFFSET(9'h12)
 ) u_draw(
-    .rst        ( rst       ),
-    .clk        ( clk       ),
-    .pxl_cen    ( pxl_cen   ),
+    .rst        ( rst           ),
+    .clk        ( clk           ),
+    .pxl_cen    ( pxl_cen       ),
 
-    .hs         ( hs        ),
-    .flip       ( 1'b0      ),
-    .hdump      ( hdump     ),
+    .hs         ( hs            ),
+    .flip       ( 1'b0          ),
+    .hdump      ( {1'b0,hdump}  ),
 
-    .draw       ( dr_start  ),
-    .busy       ( dr_busy   ),
-    .code       ( code      ),
-    .xpos       ( hpos      ),
-    .ysub       ( ysub      ),
-    .hz_keep    ( hz_keep   ),
-    .hzoom      ( hzoom     ),
+    .draw       ( dr_start      ),
+    .busy       ( dr_busy       ),
+    .code       ( code          ),
+    .xpos       ( hpos          ),
+    .ysub       ( ysub          ),
+    .hz_keep    ( hz_keep       ),
+    .hzoom      ( hzoom         ),
 
-    .hflip      ( ~hflip    ),
-    .vflip      ( vflip     ),
+    .hflip      ( ~hflip        ),
+    .vflip      ( vflip         ),
     .pal        ({pre_shd, attr}),
 
-    .rom_addr   ( pre_addr  ),
-    .rom_cs     ( pre_cs    ),
-    .rom_ok     ( rom_ok    ),
-    .rom_data   ( sorted    ),
+    .rom_addr   ( pre_addr      ),
+    .rom_cs     ( pre_cs        ),
+    .rom_ok     ( rom_ok        ),
+    .rom_data   ( sorted        ),
 
-    .pxl        ( pre_pxl   )
+    .pxl        ( pre_pxl       )
 );
-
-
-localparam RAMW=12;
-
-wire [RAMW:1] ram_a;
-
-assign ram_a = paroda ? { {RAMW-11{1'b0}}, cpu_addr[11:1] } : cpu_addr[RAMW:1];
 
 jtframe_dual_nvram16 #(
     .AW        ( RAMW       ),
@@ -214,9 +211,9 @@ jtframe_dual_nvram16 #(
 ) u_ram( // 8 or 16kB? check PCB. Game seems to work on 8kB ok
     // Port 0 - CPU access
     .clk0   ( clk       ),
-    .data0  ( cpu_dout  ),
-    .addr0  ( ram_a     ),
-    .we0    ( ram_we    ),
+    .data0  ( ram_din   ),
+    .addr0  ( ram_addr  ),
+    .we0    ( ram_we & {2{ram_cs}} ),
     .q0     ( ram_data  ),
     // Port 1 - Video access
     .clk1   ( clk       ),

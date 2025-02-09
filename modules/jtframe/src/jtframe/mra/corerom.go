@@ -1,3 +1,20 @@
+/*  This file is part of JTFRAME.
+    JTFRAME program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    JTFRAME program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with JTFRAME.  If not, see <http://www.gnu.org/licenses/>.
+
+    Author: Jose Tejada Gomez. Twitter: @topapate
+    Date: 4-1-2025 */
+
 package mra
 
 import (
@@ -10,17 +27,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/jotego/jtframe/macros"
 )
 
-func make_ROM(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
-	if len(machine.Rom) == 0 {
-		return
-	}
-	if args.Verbose {
-		fmt.Println("Parsing ", machine.Name)
-	}
-	// Create nodes
-	p := root.AddNode("rom").AddAttr("index", "0")
+func zipName(machine *MachineXML, cfg Mame2MRA) string {
 	zipname := machine.Name + ".zip"
 	if len(machine.Cloneof) > 0 {
 		zipname += "|" + machine.Cloneof + ".zip"
@@ -28,9 +39,21 @@ func make_ROM(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
 	if len(cfg.Global.Zip.Alt) > 0 {
 		zipname += "|" + cfg.Global.Zip.Alt
 	}
-	p.AddAttr("zip", zipname)
+	return zipname
+}
+
+func make_ROM(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) error {
+	if len(machine.Rom) == 0 {
+		return nil
+	}
+	if Verbose {
+		fmt.Println("Parsing ", machine.Name)
+	}
+	// Create nodes
+	p := root.AddNode("rom").AddAttr("index", "0")
+	p.AddAttr("zip", zipName(machine,cfg))
 	p.AddAttr("md5", "None") // We do not know the value yet
-	if cfg.ROM.Ddr_load {
+	if macros.IsSet("JTFRAME_MR_DDRLOAD") {
 		p.AddAttr("address", "0x30000000")
 	}
 	regions := cfg.ROM.Order
@@ -50,7 +73,7 @@ func make_ROM(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
 		}
 	}
 	var header *XMLNode
-	if cfg.Header.Len > 0 {
+	if cfg.Header.len > 0 {
 		if len(cfg.Header.Info) > 0 {
 			p.AddNode(cfg.Header.Info).comment = true
 		}
@@ -62,8 +85,8 @@ func make_ROM(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
 
 	var previous StartNode
 	for _, reg := range regions {
-		reg_cfg := find_region_cfg(machine, reg, cfg, args.Verbose)
-		if reg_cfg.Skip {
+		reg_cfg := find_region_cfg(machine, reg, cfg)
+		if reg_cfg.Skip || reg_cfg.Name=="nvram" {
 			continue
 		}
 		// Warn about unsorted regions
@@ -87,7 +110,7 @@ func make_ROM(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
 				-delta, reg, machine.Name)
 			}
 		}
-		sdram_bank_comment(p, pos, args.macros)
+		sdram_bank_comment(p, pos, macros.CopyToMap())
 		// comment with start and length of region
 		previous.add_length(pos)
 		previous.node = p.AddNode(fmt.Sprintf("%s - starts at 0x%X", reg, pos))
@@ -106,11 +129,11 @@ func make_ROM(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
 		}
 
 		reg_offsets[reg] = pos
-		if args.Verbose {
+		if Verbose {
 			fmt.Printf("\tbefore sorting %s:\n\t%v\n", reg_cfg.Name, reg_roms)
 		}
-		reg_roms = apply_sort(reg_cfg, reg_roms, machine.Name, args.Verbose)
-		if args.Verbose {
+		reg_roms = apply_sort(reg_cfg, reg_roms, machine.Name)
+		if Verbose {
 			fmt.Println("\tafter sorting:\n\t", reg_roms)
 		}
 		// pos_old := pos
@@ -127,11 +150,10 @@ func make_ROM(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
 			} else if (reg_cfg.Width != 0 && reg_cfg.Width != 8) && len(reg_roms) > 1 {
 				parse_regular_interleave(split_offset, reg, reg_roms, reg_cfg, p, machine, cfg, args, &pos)
 			} else if reg_cfg.Width <= 8 || len(reg_roms) == 1 {
-				parse_straight_dump(split_offset, split_minlen, reg, reg_roms, reg_cfg, p, machine, cfg, args, &pos)
+				parse_straight_dump(split_offset, split_minlen, reg, reg_roms, reg_cfg, p, machine, cfg, &pos)
 			} else {
-				fmt.Printf("Error: don't know how to parse region %s (%d roms) in %s\n",
+				return fmt.Errorf("Error: don't know how to parse region %s (%d roms) in %s\n",
 					reg_cfg.Name, len(reg_roms), machine.Name )
-				os.Exit(1)
 			}
 		}
 		// if pos_old == pos {
@@ -142,21 +164,28 @@ func make_ROM(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
 	previous.add_length(pos)
 	make_devROM(p, machine, cfg, &pos)
 	p.AddNode(fmt.Sprintf("Total 0x%X bytes - %d kBytes", pos, pos>>10)).comment = true
-	make_patches(p, machine, cfg, args.macros )
+	make_patches(p, machine, cfg )
 	if header != nil {
-		make_header(header, reg_offsets, pos, cfg.Header, machine)
+		if e:=make_header(header, reg_offsets, pos, cfg.Header, machine); e!= nil { return e }
+	}
+	return nil
+}
+
+func sdram_bank_comment(root *XMLNode, pos int, macros map[string]string) {
+	for k, v := range macros { // []string{"JTFRAME_BA1_START","JTFRAME_BA2_START","JTFRAME_BA3_START"} {
+		start, _ := strconv.ParseInt(v, 0, 32)
+		if start == 0 {
+			continue
+		}
+		// add the comment only once
+		if int(start) == pos && root.FindMatch(func( n*XMLNode) bool { return k == n.name })==nil {
+			root.AddNode(k).comment = true
+		}
 	}
 }
 
-func make_patches(root *XMLNode, machine *MachineXML, cfg Mame2MRA, macros map[string]string ) {
-	header := 0
-	if hd_str, f := macros["JTFRAME_HEADER"]; f {
-		h, e := strconv.ParseInt( hd_str, 0, 64 )
-		if e!=nil {
-			fmt.Printf("Cannot parse JTFRAME_HEADER=%s\n", hd_str )
-		}
-		header = int(h)
-	}
+func make_patches(root *XMLNode, machine *MachineXML, cfg Mame2MRA) {
+	header := macros.GetInt("JTFRAME_HEADER")
 	warned := true
 	for _, each := range cfg.ROM.Patches {
 		if each.Match(machine) > 0 {
@@ -169,90 +198,6 @@ func make_patches(root *XMLNode, machine *MachineXML, cfg Mame2MRA, macros map[s
 			root.AddNode("patch", each.Data).AddAttr("offset", fmt.Sprintf("0x%X", each.Offset+header))
 		}
 	}
-}
-
-func set_header_offset(headbytes []byte, pos int, reverse bool, bits, offset int) {
-	offset >>= bits
-	headbytes[pos] = byte((offset >> 8) & 0xff)
-	headbytes[pos+1] = byte(offset & 0xff)
-	if reverse {
-		aux := headbytes[pos]
-		headbytes[pos] = headbytes[pos+1]
-		headbytes[pos+1] = aux
-	}
-}
-
-func rawdata2bytes(rawstr string) []byte {
-	rawbytes := make([]byte, 0, 1024)
-	datastr := strings.ReplaceAll(rawstr, "\n", " ")
-	datastr = strings.ReplaceAll(datastr, "\t", " ")
-	datastr = strings.TrimSpace(datastr)
-	for _, hexbyte := range strings.Split(datastr, " ") {
-		if hexbyte == "" {
-			continue
-		}
-		conv, _ := strconv.ParseInt(hexbyte, 16, 0)
-		rawbytes = append(rawbytes, byte(conv))
-	}
-	return rawbytes
-}
-
-func make_header(node *XMLNode, reg_offsets map[string]int,
-	total int, cfg HeaderCfg, machine *MachineXML) {
-	devs := machine.Devices
-	headbytes := make([]byte, cfg.Len)
-	for k := 0; k < cfg.Len; k++ {
-		headbytes[k] = byte(cfg.Fill)
-	}
-	// Fill ROM offsets
-	unknown_regions := make([]string, 0)
-	if len(cfg.Offset.Regions) > 0 {
-		pos := cfg.Offset.Start
-		for _, r := range cfg.Offset.Regions {
-			offset, ok := reg_offsets[r]
-			if !ok {
-				unknown_regions = append(unknown_regions, r)
-				offset = 0
-			}
-			// fmt.Printf("region %s offset %X\n", r, offset)
-			set_header_offset(headbytes, pos, cfg.Offset.Reverse, cfg.Offset.Bits, offset)
-			pos += 2
-		}
-		//set_header_offset(headbytes, pos, cfg.Offset.Reverse, cfg.Offset.Bits, total)
-	}
-	if len(unknown_regions) > 0 {
-		fmt.Printf("\tmissing region(s)")
-		for _, uk := range unknown_regions {
-			fmt.Printf(" %s", uk)
-		}
-		fmt.Printf(". Offset set to zero in the header (%s)\n", machine.Name)
-	}
-	// Manual headers
-	for _, each := range cfg.Data {
-		if each.Match(machine) == 0 {
-			continue // skip it
-		}
-		if each.Dev != "" {
-			found := false
-			for _, ref := range devs {
-				if each.Dev == ref.Name {
-					found = true
-					break
-				}
-			}
-			if !found {
-				continue
-			}
-		}
-		pos := each.Offset
-		rawbytes := rawdata2bytes(each.Data)
-		// if pos+len(rawbytes) > len(headbytes) {
-		//  log.Fatal("Header pointer larger than declared header")
-		// }
-		copy(headbytes[pos:], rawbytes)
-		pos += len(rawbytes)
-	}
-	node.SetText(hexdump(headbytes, 8))
 }
 
 func make_frac(parent *XMLNode, reg_cfg *RegCfg, reg_roms []MameROM) int {
@@ -387,12 +332,11 @@ func fill_upto(pos *int, fillto int, parent *XMLNode) int {
 	return delta
 }
 
-func find_region_cfg(machine *MachineXML, regname string, cfg Mame2MRA, verbose bool) *RegCfg {
+func find_region_cfg(machine *MachineXML, regname string, cfg Mame2MRA) *RegCfg {
 	var best *RegCfg
 	for k, each := range cfg.ROM.Regions {
 		if each.EffName() == regname {
 			m := each.Match(machine)
-			// if verbose { fmt.Println(machine.Name," checking region config: ", each, "\n\tmatch level=",m)}
 			if m == 3 {
 				best = &cfg.ROM.Regions[k]
 				break
@@ -403,7 +347,7 @@ func find_region_cfg(machine *MachineXML, regname string, cfg Mame2MRA, verbose 
 	}
 	// the region does not have a configuration in the TOML file, set a default one:
 	if best == nil {
-		if verbose { fmt.Printf("%s: using blank configuration for ROM regions %s\n",machine.Name, regname)}
+		if Verbose { fmt.Printf("%s: using blank configuration for ROM regions %s\n",machine.Name, regname)}
 		best = &RegCfg{
 			Name: regname,
 		}
@@ -511,7 +455,7 @@ func parse_singleton(reg_roms []MameROM, reg_cfg *RegCfg, p *XMLNode) int {
 	return pos
 }
 
-func parse_straight_dump(split_offset, split_minlen int, reg string, reg_roms []MameROM, reg_cfg *RegCfg, p *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args, pos *int) {
+func parse_straight_dump(split_offset, split_minlen int, reg string, reg_roms []MameROM, reg_cfg *RegCfg, p *XMLNode, machine *MachineXML, cfg Mame2MRA, pos *int) {
 	reg_pos := 0
 	start_pos := *pos
 	for _, r := range reg_roms {
@@ -520,9 +464,9 @@ func parse_straight_dump(split_offset, split_minlen int, reg string, reg_roms []
 			offset = 0
 		} else {
 			if delta := fill_upto(pos, ((offset&-2)-reg_pos)+*pos, p); delta < 0 {
-				fmt.Printf("Warning: ROM start overcome at 0x%X (expected 0x%X - delta=%X)\n",
+				log.Printf("Warning: ROM start overcome at 0x%X (expected 0x%X - delta=%X)\n",
 					*pos, ((offset&-2)-reg_pos)+*pos, delta)
-				fmt.Printf("\t while parsing region %s (%s)\n", reg_cfg.Name, machine.Name)
+				log.Printf("\t while parsing region %s (%s)\n", reg_cfg.Name, machine.Name)
 			}
 		}
 		rom_pos := *pos
@@ -540,7 +484,7 @@ func parse_straight_dump(split_offset, split_minlen int, reg string, reg_roms []
 		// as only the first half, filling in a blank, and
 		// adding the second half
 		if *pos-start_pos <= split_offset && *pos-start_pos+r.Size > split_offset && split_minlen > (r.Size>>1) {
-			if args.Verbose {
+			if Verbose {
 				fmt.Printf("\t-split on single ROM file at %X\n", split_offset)
 			}
 			rom_len = r.Size >> 1
@@ -559,16 +503,26 @@ func parse_straight_dump(split_offset, split_minlen int, reg string, reg_roms []
 			m.AddAttr("offset", fmt.Sprintf("0x%X", rom_len))
 			*pos += rom_len
 		} else {
-			if reg_cfg.Rom_len != 0 { // length attribute is sometimes needed because the dump size might be wrong
-				m.AddAttr("length", fmt.Sprintf("0x%X", reg_cfg.Rom_len))
-			}
-			if reg_cfg.Rom_len == r.Size*2 {
-				if pp != nil {
-					p.InsertNode(*pp)
-				} else {
-					p.InsertNode(*m)
+			filled := false
+			if reg_cfg.Rom_len!=0 && r.Size!=0 {
+				mirror_cnt := reg_cfg.Rom_len / r.Size
+				// fill with mirror images of the current file when it makes sense
+				// some games expect to have these mirrors either during game play or ROM checks
+				// examples in jtshouse core: quester, wldcourt, ws89. See issue #656
+				if (mirror_cnt==2 || mirror_cnt==4 || mirror_cnt==8) && reg_cfg.Rom_len%mirror_cnt==0 {
+					filled = true
+					for k:=1;k<mirror_cnt;k=k+1 {
+						if pp != nil {
+							p.InsertNode(*pp)
+						} else {
+							p.InsertNode(*m)
+						}
+						*pos += r.Size
+					}
 				}
-				*pos += r.Size
+			}
+			if reg_cfg.Rom_len != 0 && !filled { // length attribute is sometimes needed because the dump size might be wrong
+				m.AddAttr("length", fmt.Sprintf("0x%X", reg_cfg.Rom_len))
 			}
 			*pos += r.Size
 		}
@@ -687,11 +641,11 @@ func reg_used( reg_roms []MameROM ) bool {
 func parse_regular_interleave(split_offset int, reg string,
 		reg_roms []MameROM, reg_cfg *RegCfg, p *XMLNode,
 		machine *MachineXML, cfg Mame2MRA, args Args, pos *int) {
-	if args.Verbose {
+	if Verbose {
 		fmt.Printf("Regular interleave for %s (%s)\n", reg_cfg.Name, machine.Name)
 	}
 	if split_offset!=0 {
-		if args.Verbose {
+		if Verbose {
 			fmt.Printf("\tsplit at %X\n", split_offset)
 		}
 		// Split the ROMs in two
@@ -718,7 +672,7 @@ func parse_regular_interleave(split_offset int, reg string,
 func make_interleave_groups( reg string,
 		reg_roms []MameROM, reg_cfg *RegCfg, p *XMLNode,
 		machine *MachineXML, cfg Mame2MRA, args Args, pos *int) {
-	if args.Verbose {
+	if Verbose {
 		fmt.Printf("\tRegular interleave for %s (%s)\n", reg_cfg.Name, machine.Name)
 	}
 	if len(reg_roms)==0 {
@@ -735,7 +689,7 @@ func make_interleave_groups( reg string,
 		for {
 			sel := make([]int,0,16)
 			for k := 0; k < len(reg_roms); k++ {
-				if args.Verbose {
+				if Verbose {
 					fmt.Printf("%12s (%s) - %05X <? %X - %X/%X",reg_roms[k].Name,
 					reg_roms[k].Region,
 					reg_roms[k].Offset, rom_offset,
@@ -744,9 +698,9 @@ func make_interleave_groups( reg string,
 				if (reg_roms[k].Offset &^ 0xf) <= rom_offset &&
 				    reg_roms[k].used < reg_roms[k].Size {
 					sel = append( sel, k )
-					if args.Verbose { fmt.Printf("   * ") }
+					if Verbose { fmt.Printf("   * ") }
 				}
-				if args.Verbose { fmt.Println("") }
+				if Verbose { fmt.Println("") }
 			}
 			if len(sel)==0 {
 				if reg_used(reg_roms) { break }
@@ -754,7 +708,7 @@ func make_interleave_groups( reg string,
 				for _,each := range reg_roms {
 					if each.used==0 {
 						rom_offset = each.Offset
-						if args.Verbose { fmt.Printf("Moved offset to %X\n", rom_offset)}
+						if Verbose { fmt.Printf("Moved offset to %X\n", rom_offset)}
 						continue main_loop
 					}
 				}
@@ -827,11 +781,11 @@ func make_interleave_groups( reg string,
 			}
 			// Create new array for this group
 			new_group := make([]MameROM, 0, len(sel))
-			if args.Verbose {
+			if Verbose {
 				fmt.Printf("New group. group_size=%X at pos=%X\n",group_size,*pos)
 			}
 			for j:=0;j<len(sel);j++ {
-				if args.Verbose {
+				if Verbose {
 					fmt.Printf("\t%12s (%s) - %d - %s\n", reg_roms[sel[j]].Name,
 						reg_roms[sel[j]].Region,
 						reg_roms[sel[j]].wlen, reg_roms[sel[j]].mapstr)
@@ -863,7 +817,7 @@ func make_interleave_groups( reg string,
 				reg_roms[sel[j]].used += group_size*reg_roms[sel[j]].wlen
 			}
 			rom_offset = *pos-old_pos
-			if args.Verbose {
+			if Verbose {
 				fmt.Printf("-------------------> %X (pos=%0X)\n",rom_offset,*pos)
 			}
 		}
@@ -881,7 +835,7 @@ func make_interleave_groups( reg string,
 					reg_roms, reg_cfg, p ,
 					machine, cfg, args, pos, start_pos )
 	}
-	if args.Verbose { fmt.Println("*******************") }
+	if Verbose { fmt.Println("*******************") }
 }
 
 func interleave_group( reg string,
@@ -909,7 +863,7 @@ func interleave_group( reg string,
 			fill_upto(pos, ((offset&-2)-reg_pos)+*pos, p)
 			deficit = 0
 			n = p.AddNode("interleave").AddAttr("output", fmt.Sprintf("%d", reg_cfg.Width))
-			if args.Verbose {
+			if Verbose {
 				fmt.Printf("Made %d-bit interleave for %s\n", reg_cfg.Width, reg_cfg.Name)
 			}
 			// Prepare the map
@@ -925,7 +879,7 @@ func interleave_group( reg string,
 		}
 		process_rom := func(j int) {
 			r = reg_roms[j]
-			if args.Verbose {
+			if Verbose {
 				fmt.Printf("\tparsing %s (%d-byte words - mapstr=%s)\n", r.Name, r.wlen, mapstr)
 			}
 			m := add_rom(n, r)
@@ -956,7 +910,7 @@ func interleave_group( reg string,
 			}
 		}
 		if reg_cfg.Reverse {
-			if args.Verbose {
+			if Verbose {
 				fmt.Printf("Got %d ROMs, with rom_cnt=%d, k=%d\n",len(reg_roms), rom_cnt, k)
 			}
 			for j := k + rom_cnt - 1; j >= k; j-- {

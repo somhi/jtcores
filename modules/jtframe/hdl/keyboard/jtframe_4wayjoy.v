@@ -1,4 +1,4 @@
-/*  This file is part of JT_FRAME.
+/*  This file is part of JTFRAME.
     JTFRAME program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
@@ -18,28 +18,19 @@
 
 module jtframe_4wayjoy(
     input            clk,
-    input            rst,
     input            enable,
     input      [3:0] joy8way,
     output reg [3:0] joy4way
 );
 
-`ifndef JTFRAME_SUPPORT_4WAY
-    always @(*) joy4way = joy8way;
-`else
-always @(posedge clk, posedge rst) begin
-    if( rst ) begin
-        joy4way <= 4'd0;
+always @(posedge clk) begin
+    if( !enable ) begin
+        joy4way <= joy8way;
     end else begin
-        if( !enable ) begin
+        if( joy8way==4'b0001 || joy8way==4'b0010 ||
+            joy8way==4'b0100 || joy8way==4'b1000 || joy8way==4'b0000 )
             joy4way <= joy8way;
-        end else begin
-            if( joy8way==4'b0001 || joy8way==4'b0010 ||
-                joy8way==4'b0100 || joy8way==4'b1000 || joy8way==4'b0000 )
-                joy4way <= joy8way;
-        end
     end
 end
-`endif
 
 endmodule

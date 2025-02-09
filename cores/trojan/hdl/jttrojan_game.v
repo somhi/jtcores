@@ -20,132 +20,69 @@ module jttrojan_game(
     `include "jtframe_game_ports.inc" // see $JTFRAME/hdl/inc/jtframe_game_ports.inc
 );
 
-// These signals are used by games which need
-// to read back from SDRAM during the ROM download process
-assign prog_rd    = 1'b0;
-assign dwnld_busy = ioctl_rom;
-
-wire [8:0] V;
-wire [8:0] H;
-wire HINIT;
-
+wire [15:0] scr2_hpos, scr_part;
 wire [12:0] cpu_AB;
-wire snd_cs, snd2_cs, map_cs;
-wire char_cs, blue_cs, redgreen_cs;
-wire flip;
-wire [7:0] cpu_dout, char_dout, scr_dout;
-wire [15:0] scr2_hpos;
-wire rd, cpu_cen;
-wire char_busy, scr_busy;
-
-localparam SCRW=18, SCR2W=15, OBJW=18;
-
-// ROM data
-wire [15:0] char_data, scr_data, scr2_data, map_data;
-wire [15:0] obj_data;
-wire [ 7:0] main_data;
-wire [ 7:0] snd_data, snd2_data;
-// ROM address
-wire [16:0] main_addr;
-wire [14:0] snd_addr;
-wire [13:0] map_addr;
-wire [13:0] snd2_addr;
-wire [13:0] char_addr;
-wire [SCRW-1:0] scr_addr;
-wire [SCR2W-1:0] scr2_addr;
-wire [OBJW-1:0] obj_addr;
-wire [ 7:0] dipsw_a, dipsw_b;
-
-wire main_ok, snd_ok, snd2_ok, obj_ok;
-wire cen12, cen8, cen6, cen3, cen1p5;
+wire [ 8:0] scr_hpos, scr_vpos;
+wire [ 8:0] obj_AB, V, H;
+reg  [ 7:0] dipsw_a, dipsw_b;
+wire [ 7:0] cpu_dout, char_dout, scr_dout,
+            snd_latch, snd2_latch, main_ram,
+            mcu_mdin, mcu_mdout, mcu_sdin;
+wire        blue_cs, redgreen_cs, flip, HINIT, scr0,
+            rd, base_cen, char_busy, scr_busy, char_cs, scr_cs,
+            sres_b, snd_int, RnW, OKOUT, blcnten, bus_req, bus_ack,
+            mcu_mrd, mcu_mwr, mcu_srd, mcu_swr, mcu_cen, cpu_cen;
+reg         trojan, avengers, mcu_en, rst_mcu;
 
 assign pxl2_cen = cen12;
 assign pxl_cen  = cen6;
+assign dip_flip = flip^avengers;
+assign scr_part = scr0 ? { scr_data[27:24], scr_data[19:16], scr_data[11: 8], scr_data[ 3: 0] } :
+                         { scr_data[31:28], scr_data[23:20], scr_data[15:12], scr_data[ 7: 4] };
+assign base_cen  = trojan ? cen3 : cen6;
+assign debug_view = debug_bus[0] ? scr2_hpos[15:8] : scr2_hpos[7:0];
 
-assign {dipsw_b, dipsw_a} = dipsw[15:0];
-assign dip_flip = flip;
-/* verilator lint_off PINMISSING */
-jtframe_cen48 u_cen(
-    .clk    ( clk       ),
-    .cen12  ( cen12     ),
-    .cen6   ( cen6      ),
-    .cen3   ( cen3      ),
-    .cen1p5 ( cen1p5    ),
-    // unused:
-    .cen16  (           ),
-    .cen8   ( cen8      ),
-    .cen4   (           ),
-    .cen4_12(           ),
-    .cen3q  (           ),
-    .cen12b (           ),
-    .cen6b  (           ),
-    .cen3b  (           ),
-    .cen3qb (           ),
-    .cen1p5b(           )
-);
-/* verilator lint_on PINMISSING */
-wire RnW;
-// sound
-wire sres_b, snd_int;
-wire [7:0] snd_latch, snd2_latch;
+localparam [25:0]   OBJ_START  = `OBJ_START,
+                    PROM_START = `JTFRAME_PROM_START;
 
-wire        main_cs;
-// OBJ
-wire OKOUT, blcnten, bus_req, bus_ack;
-wire [ 8:0] obj_AB;
-wire [ 7:0] main_ram, game_cfg;
+always @* begin
+    post_addr = prog_addr;
+    if( ioctl_addr >= OBJ_START && ioctl_addr < PROM_START ) begin
+        post_addr[5:1] = {prog_addr[4:1],prog_addr[5]};
+    end
+end
 
-localparam [21:0] CPU_OFFSET  = 22'h0;
-localparam [21:0] SND_OFFSET  = 22'h1_8000 >> 1;
-localparam [21:0] SND2_OFFSET = 22'h2_0000 >> 1;
-localparam [21:0] MAP_OFFSET  = 22'h2_4000 >> 1;
-localparam [21:0] CHAR_OFFSET = 22'h4_0000 >> 1;
-localparam [21:0] SCR_OFFSET  = 22'h4_4000 >> 1;
-localparam [21:0] SCR2_OFFSET = 22'h2_C000 >> 1;
-localparam [21:0] OBJ_OFFSET  = 22'h8_4000 >> 1;
+always @(posedge clk) begin
+    if( header && ioctl_addr[3:0]==8 ) {mcu_en,avengers,trojan} <= prog_data[2:0];
+    dipsw_a <= avengers ? dipsw[15:8] : dipsw[ 7:0];
+    dipsw_b <= avengers ? dipsw[ 7:0] : dipsw[15:8];
+    rst_mcu <= rst24 | ~mcu_en;
+end
 
-jtsectnz_prom_we #(
-    .CPU_OFFSET     ( CPU_OFFSET    ),
-    .SND_OFFSET     ( SND_OFFSET    ),
-    .CHAR_OFFSET    ( CHAR_OFFSET   ),
-    .SCR_OFFSET     ( SCR_OFFSET    ),
-    .OBJ_OFFSET     ( OBJ_OFFSET    ))
-u_prom_we(
-    .clk         ( clk           ),
-    .ioctl_rom   ( ioctl_rom     ),
-
-    .ioctl_wr    ( ioctl_wr      ),
-    .ioctl_addr  ( ioctl_addr[21:0] ),
-    .ioctl_dout  ( ioctl_dout    ),
-
-    .prog_data   ( prog_data     ),
-    .prog_mask   ( prog_mask     ),
-    .prog_addr   ( prog_addr     ),
-    .prog_we     ( prog_we       ),
-
-    .sdram_ack   ( sdram_ack     ),
-    .game_cfg    ( game_cfg      )
+jtframe_crossclk_cen u_crosscen(
+    .clk_in     ( clk       ),
+    .cen_in     ( base_cen  ),
+    .clk_out    ( clk24     ),
+    .cen_out    ( mcu_cen   )
 );
 
-wire scr_cs;
-wire [10:0] scr_hpos, scr_vpos;
-
-
-`ifndef NOMAIN
-
-jtcommnd_main #(.GAME(2)) u_main(
+jttrojan_main u_main(
     .rst        ( rst           ),
     .clk        ( clk           ),
-    .cen6       ( cen6          ),
-    .cen3       ( cen3          ),
+    .base_cen   ( base_cen      ),
     .cpu_cen    ( cpu_cen       ),
-    .cen_sel    ( 1'b0          ), // 3MHz CPU
+    .nmi_sel    ( avengers      ),
     // Timing
     .flip       ( flip          ),
     .V          ( V             ),
     .LHBL       ( LHBL          ),
     .LVBL       ( LVBL          ),
     .H1         ( H[0]          ),
+    // MCU
+    .main_latch ( mcu_mdin      ),
+    .mcu_latch  ( mcu_mdout     ),
+    .mcu_rd     ( mcu_mrd       ),
+    .mcu_wr     ( mcu_mwr       ),
     // sound
     .sres_b     ( sres_b        ),
     .snd_latch  ( snd_latch     ),
@@ -181,8 +118,8 @@ jtcommnd_main #(.GAME(2)) u_main(
     .rom_data   ( main_data     ),
     .rom_ok     ( main_ok       ),
     // Cabinet input
-    .cab_1p     ( cab_1p        ),
-    .coin       ( coin          ),
+    .cab_1p     ( cab_1p[1:0]   ),
+    .coin       ( coin[1:0]     ),
     .service    ( service       ),
     .joystick1  ( joystick1[5:0]),
     .joystick2  ( joystick2[5:0]),
@@ -195,41 +132,49 @@ jtcommnd_main #(.GAME(2)) u_main(
     // DIP switches
     .dip_pause  ( dip_pause     ),
     .dipsw_a    ( dipsw_a       ),
-    .dipsw_b    ( dipsw_b       ),
-    // Unused
-    .char_on    (               ),
-    .scr1_on    (               ),
-    .scr2_on    (               ),
-    .obj_on     (               ),
-    .scr1_pal   (               ),
-    .scr2_pal   (               )
+    .dipsw_b    ( dipsw_b       )
 );
-`else
-assign main_addr   = 17'd0;
-assign char_cs     = 1'b0;
-assign scr_cs      = 1'b0;
-assign bus_ack     = 1'b0;
-assign flip        = 1'b0;
-assign RnW         = 1'b1;
-assign scr_hpos    = 0;
-assign scr_vpos    = 0;
-assign cpu_cen     = cen3;
-`endif
+
+jttrojan_mcu u_mcu(
+    .rst        ( rst_mcu         ),
+    .clk        ( clk24           ),
+    .clk_rom    ( clk             ),
+    .cen        ( mcu_cen         ), // 6 MHz
+    .LVBL       ( LVBL            ),
+    .vdump      ( V               ),
+    // Main CPU interface
+    .mrd        ( mcu_mrd         ),
+    .mwr        ( mcu_mwr         ),
+    .to_main    ( mcu_mdin        ),
+    .from_main  ( mcu_mdout       ),
+    // Sound CPU interface
+    .srd        ( mcu_srd         ),
+    .swr        ( mcu_swr         ),
+    .to_snd     ( mcu_sdin        ),
+    .from_snd   ( snd_latch       ),
+    // ROM programming
+    .prog_addr  ( prog_addr[11:0] ),
+    .prom_din   ( prog_data       ),
+    .prom_we    ( prom_we         )
+);
 
 jttrojan_sound u_sound (
     .rst            ( rst            ),
     .clk            ( clk            ),
     .cen3           ( cen3           ),
     .cen1p5         ( cen1p5         ),
+    .cenp384        ( cenp384        ),
+    .avengers       ( avengers       ),
     // Interface with main CPU
     .sres_b         ( sres_b         ),
     .snd_latch      ( snd_latch      ),
     .snd2_latch     ( snd2_latch     ),
     .snd_int        ( snd_int        ),
-    // sound control
-    .enable_psg     ( enable_psg     ),
-    .enable_fm      ( enable_fm      ),
-    .psg_level      ( dip_fxlevel    ),
+    // Interface with MCU
+    .mcu_sdout      (                ),
+    .mcu_sdin       ( mcu_sdin       ),
+    .mcu_srd        ( mcu_srd        ),
+    .mcu_swr        ( mcu_swr        ),
     // ROM
     .rom_addr       ( snd_addr       ),
     .rom_data       ( snd_data       ),
@@ -241,28 +186,24 @@ jttrojan_sound u_sound (
     .rom2_cs        ( snd2_cs        ),
     .rom2_ok        ( snd2_ok        ),
     // sound output
-    .ym_snd         ( snd            ),
-    .sample         ( sample         ),
-    .peak           ( game_led       ),
-    .debug_view     ( debug_view     )
+    .fm0            ( fm0            ),
+    .fm1            ( fm1            ),
+    .psg0           ( psg0           ),
+    .psg1           ( psg1           ),
+    .pcm            ( pcm            ),
+    .debug_view     (                )
 );
-
-wire scr_ok, scr2_ok, map_ok, char_ok;
-
-jttrojan_video #(
-    .SCRW   ( SCRW      ),
-    .OBJW   ( OBJW      )
-)
-u_video(
+/* verilator tracing_off */
+jttrojan_video u_video(
     .rst        ( rst           ),
     .clk        ( clk           ),
     .cen12      ( cen12         ),
     .cen8       ( cen8          ),
     .cen6       ( cen6          ),
     .cen3       ( cen3          ),
-    .cpu_cen    ( cpu_cen       ),
+    .cpu_cen    ( base_cen      ),
+    .avengers   ( avengers      ),
     .cpu_AB     ( cpu_AB[11:0]  ),
-    .game_sel   ( game_cfg[0]   ),
     .V          ( V             ),
     .H          ( H             ),
     .RnW        ( RnW           ),
@@ -281,8 +222,8 @@ u_video(
     // SCROLL - ROM
     .scr_cs     ( scr_cs        ),
     .scr_dout   ( scr_dout      ),
-    .scr_addr   ( scr_addr      ),
-    .scr_data   ( scr_data      ),
+    .scr_addr   ({scr_addr,scr0}),
+    .scr_data   ( scr_part      ),
     .scr_busy   ( scr_busy      ),
     .scr_hpos   ( scr_hpos[8:0] ),
     .scr_vpos   ( scr_vpos[8:0] ),
@@ -305,101 +246,18 @@ u_video(
     .bus_req    ( bus_req       ), // Request bus
     .bus_ack    ( bus_ack       ), // bus acknowledge
     .blcnten    ( blcnten       ), // bus line counter enable
-    // PROMs
-    // .prog_addr    ( prog_addr[7:0] ),
-    // .prom_prio_we ( prom_we        ),
-    // .prom_din     ( prog_data[3:0] ),
     // Color Mix
     .LHBL       ( LHBL          ),
     .LVBL       ( LVBL          ),
     .HS         ( HS            ),
     .VS         ( VS            ),
-    .gfx_en     ( gfx_en        ),
     // Pixel Output
     .red        ( red           ),
     .green      ( green         ),
-    .blue       ( blue          )
-);
-
-// Scroll data: Z, Y, X
-jtframe_rom #(
-    .SLOT0_AW    ( 14              ), // Char
-    .SLOT1_AW    ( SCRW            ), // Scroll
-    .SLOT2_AW    ( 14              ), // Scroll 2 Map
-    .SLOT3_AW    ( SCR2W           ), // Scroll 2
-    .SLOT4_AW    ( 14              ), // Sound 2
-    .SLOT6_AW    ( 15              ), // Sound
-    .SLOT7_AW    ( 17              ), // Main
-    .SLOT8_AW    ( OBJW            ), // OBJ
-
-    .SLOT0_DW    ( 16              ), // Char
-    .SLOT1_DW    ( 16              ), // Scroll
-    .SLOT2_DW    ( 16              ), // Scroll Map
-    .SLOT3_DW    ( 16              ), // Scroll 2
-    .SLOT4_DW    (  8              ), // Sound 2
-    .SLOT6_DW    (  8              ), // Sound
-    .SLOT7_DW    (  8              ), // Main
-    .SLOT8_DW    ( 16              ), // OBJ
-
-    .SLOT0_OFFSET( CHAR_OFFSET ),
-    .SLOT1_OFFSET( SCR_OFFSET  ),
-    .SLOT2_OFFSET( MAP_OFFSET  ),
-    .SLOT3_OFFSET( SCR2_OFFSET ),
-    .SLOT4_OFFSET( SND2_OFFSET ),
-    .SLOT6_OFFSET( SND_OFFSET  ),
-    .SLOT7_OFFSET( CPU_OFFSET  ),
-    .SLOT8_OFFSET( OBJ_OFFSET  )
-) u_rom (
-    .rst         ( rst           ),
-    .clk         ( clk           ),
-
-    .slot0_cs    ( LVBL          ), // Char
-    .slot1_cs    ( LVBL          ), // Scroll
-    .slot2_cs    ( map_cs        ), // Map
-    .slot3_cs    ( LVBL          ), // Scroll 2
-    .slot4_cs    ( snd2_cs       ),
-    .slot5_cs    ( 1'b0          ),
-    .slot6_cs    ( snd_cs        ),
-    .slot7_cs    ( main_cs       ),
-    .slot8_cs    ( 1'b1          ), // OBJ
-
-    .slot0_ok    ( char_ok       ),
-    .slot1_ok    ( scr_ok        ),
-    .slot2_ok    ( map_ok        ),
-    .slot3_ok    ( scr2_ok       ),
-    .slot4_ok    ( snd2_ok       ),
-    .slot5_ok    (               ),
-    .slot6_ok    ( snd_ok        ),
-    .slot7_ok    ( main_ok       ),
-    .slot8_ok    ( obj_ok        ),
-
-    .slot0_addr  ( char_addr     ),
-    .slot1_addr  ( scr_addr      ),
-    .slot2_addr  ( map_addr      ),
-    .slot3_addr  ( scr2_addr     ),
-    .slot4_addr  ( snd2_addr     ),
-    .slot5_addr  (               ),
-    .slot6_addr  ( snd_addr      ),
-    .slot7_addr  ( main_addr     ),
-    .slot8_addr  ( obj_addr      ),
-
-    .slot0_dout  ( char_data     ),
-    .slot1_dout  ( scr_data      ),
-    .slot2_dout  ( map_data      ),
-    .slot3_dout  ( scr2_data     ),
-    .slot4_dout  ( snd2_data     ),
-    .slot5_dout  (               ),
-    .slot6_dout  ( snd_data      ),
-    .slot7_dout  ( main_data     ),
-    .slot8_dout  ( obj_data      ),
-
-    // SDRAM interface
-    .sdram_rd    ( sdram_req     ),
-    .sdram_ack   ( sdram_ack     ),
-    .data_dst    ( data_dst      ),
-    .data_rdy    ( data_rdy      ),
-    .sdram_addr  ( sdram_addr    ),
-    .data_read   ( data_read     )
+    .blue       ( blue          ),
+    // Debug
+    .gfx_en     ( gfx_en        ),
+    .debug_bus  ( debug_bus     )
 );
 
 endmodule

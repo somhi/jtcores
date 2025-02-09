@@ -1,3 +1,20 @@
+/*  This file is part of JTFRAME.
+    JTFRAME program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    JTFRAME program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with JTFRAME.  If not, see <http://www.gnu.org/licenses/>.
+
+    Author: Jose Tejada Gomez. Twitter: @topapate
+    Date: 4-1-2025 */
+
 package mra
 
 import (
@@ -10,72 +27,6 @@ import (
 	"strings"
 	"strconv"
 )
-
-type MameROM struct {
-	Name       string `xml:"name,attr"`
-	Crc        string `xml:"crc,attr"`
-	Region     string `xml:"region,attr"`
-	Size       int    `xml:"size,attr"`
-	Offset_str string `xml:"offset,attr"`
-	Status     string `xml:"status,attr"`
-	Offset     int
-	// filled by mame2mra.go
-	group int // interleave group to which the ROM belongs
-	wlen  int // word length in bytes
-	clen  int // byte count to dump
-	used  int // consumed bytes
-	split_offset int
-	show_len bool
-	add_offset int
-	mapstr string
-}
-
-type MameDevice struct {
-	Name string `xml:"name,attr"`
-}
-
-type MAMEDIPValue struct {
-	Name    string `xml:"name,attr"`
-	Value   int    `xml:"value,attr"`
-	Default string `xml:"default,attr"`
-}
-
-type MAMEDIPValues []MAMEDIPValue
-
-func (this MAMEDIPValues) Len() int {
-	return len(this)
-}
-
-func (this MAMEDIPValues) Swap(i, j int) {
-	aux := this[j]
-	this[j] = this[i]
-	this[i] = aux
-}
-
-func (this MAMEDIPValues) Less(i, j int) bool {
-	return this[i].Value < this[j].Value
-}
-
-type Diplocation struct {
-	Name   string `xml:"name,attr"`
-	Number int    `xml:"number,attr"`
-}
-
-type MachineDIP struct {
-	Name      string   `xml:"name,attr"`
-	Tag       string   `xml:"tag,attr"`
-	Mask      int      `xml:"mask,attr"`
-	Condition struct { // The meaning of some DIP switches may change upon other switches' value
-		Tag      string `xml:"tag,attr"`
-		Mask     int    `xml:"mask,attr"`
-		Relation string `xml:"relation,attr"`
-		Value    int    `xml:"value,attr"`
-	} `xml:"condition"`
-	Diplocation []Diplocation `xml:"diplocation"`
-	Dipvalue MAMEDIPValues `xml:"dipvalue"`
-	// calculated by JTFRAME after reading XML
-	lsb, msb, full_mask, offset int
-}
 
 type MachineXML struct {
 	Name         string       `xml:"name,attr"`
@@ -113,36 +64,83 @@ type MachineXML struct {
 	Ismechanical bool `xml:"ismechanical,attr"`
 }
 
-type MameXML struct {
-	Machine []MachineXML
+type MameROM struct {
+	Name       string `xml:"name,attr"`
+	Crc        string `xml:"crc,attr"`
+	Region     string `xml:"region,attr"`
+	Size       int    `xml:"size,attr"`
+	Offset_str string `xml:"offset,attr"`
+	Status     string `xml:"status,attr"`
+	Offset     int
+	// filled by mame2mra.go
+	group int // interleave group to which the ROM belongs
+	wlen  int // word length in bytes
+	clen  int // byte count to dump
+	used  int // consumed bytes
+	split_offset int
+	show_len bool
+	add_offset int
+	mapstr string
 }
 
-// Configure whether to parse or not a machine
-type ParseCfg struct {
-	All        bool // parse all games
-	Sourcefile []string
-	Main_setnames []string // setname to be used as the main ones to copy in mister/releases
-	Rename     []struct {
-		Setname string
-		Name    string
-	}
-	Older	int	// minimum year allow to parse
-	Skip struct {
-		Selectable
-		Pocket		 Selectable
-		Descriptions []string
-		Bootlegs     bool
-	}
-	Mustbe struct { // If any of these conditions are met, the game will be parsed
-		// empty arrays or strings are not used for comparison
-		// Descriptions []string
-		// Setnames     []string
-		Machines []string
-		Devices  []string // list of devices the game must contain to be parsed
-	}
-	Parents []struct {
-		Name, Description string
-	}
+type MameDevice struct {
+	Name string `xml:"name,attr"`
+}
+
+type MachineDIP struct {
+	Name      string   `xml:"name,attr"`
+	Tag       string   `xml:"tag,attr"`
+	Mask      int      `xml:"mask,attr"`
+	Condition struct { // The meaning of some DIP switches may change upon other switches' value
+		Tag      string `xml:"tag,attr"`
+		Mask     int    `xml:"mask,attr"`
+		Relation string `xml:"relation,attr"`
+		Value    int    `xml:"value,attr"`
+	} `xml:"condition"`
+	Diplocation []Diplocation `xml:"diplocation"`
+	Dipvalue MAMEDIPValues `xml:"dipvalue"`
+	// calculated by JTFRAME after reading XML
+	lsb, msb, full_mask, offset int
+}
+
+type MAMEDIPValues []MAMEDIPValue
+
+type MAMEDIPValue struct {
+	Name    string `xml:"name,attr"`
+	Value   int    `xml:"value,attr"`
+	Default string `xml:"default,attr"`
+}
+
+func (this MAMEDIPValues) Len() int {
+	return len(this)
+}
+
+func (this MAMEDIPValues) Swap(i, j int) {
+	aux := this[j]
+	this[j] = this[i]
+	this[i] = aux
+}
+
+func (this MAMEDIPValues) Less(i, j int) bool {
+	return this[i].Value < this[j].Value
+}
+
+type Diplocation struct {
+	Name   string `xml:"name,attr"`
+	Number int    `xml:"number,attr"`
+}
+
+func (machine *MachineXML) Find(machine_options []Selectable) int {
+    for k, option := range machine_options {
+        if option.Match(machine)>0 {
+            return k
+        }
+    }
+    return -1
+}
+
+type MameXML struct {
+	Machine []MachineXML
 }
 
 type Extractor struct {
@@ -158,8 +156,8 @@ func Mame_version() string {
 
 func (this *MachineXML)Dial() bool {
 	for _, each := range this.Input.Control {
-		if strings.ToLower(each.Type)=="dial" {
-			return true
+		switch strings.ToLower(each.Type) {
+			case "dial","positional": return true
 		}
 	}
 	return false

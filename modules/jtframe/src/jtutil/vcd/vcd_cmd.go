@@ -1,3 +1,20 @@
+/*  This file is part of JTCORES.
+    JTFRAME program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    JTFRAME program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with JTFRAME.  If not, see <http://www.gnu.org/licenses/>.
+
+    Author: Jose Tejada Gomez. Twitter: @topapate
+    Date: 4-1-2025 */
+
 package vcd
 
 import(
@@ -12,6 +29,9 @@ import(
 )
 
 func Prompt( vcd, trace *LnFile, ss vcdData, mame_alias mameAlias ) {
+    fses, e := os.Create("trace.ses") // echo all session commands to a file
+    defer fses.Close()
+    must(e)
     // Read from stdin initially
     nested := make([]*bufio.Scanner,1)
     nested[0] = bufio.NewScanner(os.Stdin)
@@ -24,7 +44,7 @@ func Prompt( vcd, trace *LnFile, ss vcdData, mame_alias mameAlias ) {
     scope := findCommonScope(ss)
     fmt.Printf("At scope %s\n",scope)
     hier := GenerateHierarchy(ss)
-    mame_st := &MAMEState{ alias: mame_alias }
+    mame_st := &MAMEState{ alias: mame_alias, mask: make(NameValue) }
     sim_st := &SimState{ data: ss }
     ignore := make(boolSet)
     kmax := 4
@@ -59,6 +79,7 @@ func Prompt( vcd, trace *LnFile, ss vcdData, mame_alias mameAlias ) {
             break
         }
         lt := scn.Text()
+        fmt.Fprintln(fses,lt)
         if k:=strings.Index(lt,"#"); k!=-1 { lt=lt[0:k] }
         tokens := strings.Fields(lt)
         if len(tokens)==0 { continue }
@@ -164,6 +185,10 @@ func Prompt( vcd, trace *LnFile, ss vcdData, mame_alias mameAlias ) {
             }
         }
         case "kmax": {
+            if len(tokens)==1 {
+                fmt.Printf("KMAX=%d\n",kmax)
+                break
+            }
             if len(tokens)!=2 {
                 fmt.Println("Wrong arguments. Use kmax <number>")
                 break
@@ -174,6 +199,35 @@ func Prompt( vcd, trace *LnFile, ss vcdData, mame_alias mameAlias ) {
                 fmt.Printf("Setting KMAX to minimum (2)")
                 kmax=2
             }
+        }
+        case "mask": {
+            if len(tokens)==1 {
+                if len(mame_st.mask)==0 {
+                    fmt.Println("No masks defined")
+                } else {
+                    for k,v := range mame_st.mask {
+                        fmt.Printf("%-10s %02X\n",k,v)
+                    }
+                }
+                break
+            }
+            if len(tokens)!=3 {
+                fmt.Println("Wrong arguments. Use mask <signal name> <hex mask>")
+                fmt.Println("Use mask without arguments to show the current mask set")
+                break
+            }
+            mask,e := strconv.ParseUint(tokens[2],16,64)
+            if e!=nil {
+                fmt.Println(e)
+                break
+            }
+            name := tokens[1]
+            _, found := mame_st.data[name]
+            if !found {
+                fmt.Printf("Signal %s not found in MAME trace\n", name)
+                break
+            }
+            mame_st.mask[name]=mask
         }
         case "q","quit": break prompt_loop
         case "scope": {
@@ -271,17 +325,18 @@ g,go                compare MAME and simulation until a discrepancy cannot be re
 h,hierarchy         shows the signal hierarchy in the simulation
 i,ignore foo boo    ignores the given MAME variables in comparison
 il,ignore-list      shows the list of ignored variables
+mask                sets bit masks for signals. Bits set at 1 will be ignored.
 match-trace         moves MAME forward until it matches simulation
 match-vcd           moves the simulation forward until it matches MAME data
 mt,mt-trace foo     moves MAME forward until the given condition is met
+                    start hex numbers with $ for comparison
 mv,mv-vcd foo       moves simulation forward until the given condition is met
 p,print             evaluates an expression. Use to test conditions
 q,quit              quits the program
 .,source foo        executes the commands in the given file
 s,step              forwards simulation by one relevant change
 set vcd-name=value  alters the value of a simulation signal
-st,step-trace       forwards MAME trace by one relevant change
-`)
+st,step-trace       forwards MAME trace by one relevant change`)
         }
         default: fmt.Println("Unknown command ",tokens[0])
         }
@@ -524,11 +579,13 @@ func diff( st *MAMEState, context string, verbose bool, ignore boolSet ) int {
         p, _ := st.alias[name]
         if p == nil { continue }
         toignore, _ := ignore[name]
-        if p.FullValue() == value && toignore { // use full value to concatenate data
+        mask, _ := st.mask[name]
+        equal := (p.FullValue() | mask) == (value | mask)
+        if equal && toignore { // use full value to concatenate data
             ignore[name]=false  // stops ignoring it
             fmt.Printf("%s taken out of the ignore list\n",name)
         }
-        if p.FullValue() !=value && !toignore {
+        if !equal && !toignore {
             if verbose {
                 if diffs==nil { diffs = make([]string,0,1) }
                 diffs = append(diffs, name)

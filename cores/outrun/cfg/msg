@@ -13,9 +13,10 @@
          measurements
 
         Known Issues:
- - Blank in the middle of the road
- - Blank lines in the sprite layer
- for very large sprites
+ - Blank in the middle
+        of the road
+ - Blank lines in the sprite
+ layer for very large sprites
 
          \BJTKCHAMP\W
     FPGA core by \RJOTEGO\W
@@ -23,7 +24,6 @@
 
        PCB donated by
         DJ Hard Rich
-        Atrac17
 
       Based on the PCB
       schematics and chip
@@ -46,7 +46,6 @@ Jeffrey Pierce  John Lange
     Ksenia Anastasia
 Louis Martinez  Martin Birkeldh
     Porkchop Express
-    Pramod Somashekar
 Rysha           Shawn Henderson
 TT_Hipster1941  Tulio Adriano
 Ulf Skutnabba

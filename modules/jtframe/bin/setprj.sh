@@ -21,6 +21,7 @@ fi
 
 # derived variables
 export CORES=$JTROOT/cores
+RLS=$JTROOT/release
 # Adds all core names to the auto-completion list of bash
 ALLCORES=$(ls $CORES| tr '\n' ' ')
 complete -W "$ALLCORES" jtcore
@@ -43,22 +44,18 @@ function cdrls {
     cd $JTROOT/release
 }
 
-# returns the current working directory with the core name
-# changed by its argument. Use it to refer to the equivalent current folder
-# in a different core
-function incore {
-    IFS=/ read -ra string <<< $(pwd)
-    local j="/"
-    local next=0
-    for i in ${string[@]};do
-        if [ $next = 0 ]; then
-            j=${j}${i}/
-        else
-            next=0
-            j=${j}$1/
-        fi
-    done
-    echo $j
+function lint {
+    local CORENAME=$1
+    if [ -z "$CORENAME" ]; then
+        # derive the default core name from the path
+        CORENAME=$(realpath . --relative-to=$CORES)
+        CORENAME=${CORENAME%%/*}
+    fi
+    if [ ! -d "$CORES/$CORENAME" ]; then
+        echo "Use a valid core name or run it from inside the core folder"
+        return 1
+    fi
+    lint-one.sh $CORENAME -u JTFRAME_SKIP
 }
 
 function swcore {
@@ -66,39 +63,56 @@ function swcore {
         echo Have you forgot to define JTROOT?
         return
     fi
-    if [ `pwd` = "$JTROOT/cores" ]; then
-        cd $1/$2
+    if [ ! -z "$2" ]; then
+        cd $JTROOT/cores/$1/$2
         return
     fi
-    if [ -d "$CORES/$1/$2" ]; then
-        cd "$CORES/$1/$2"
+    if [ -z "$1" ]; then
+        echo "Use swcore <corename>"
+        return 1
+    fi
+    if [ ! -d "$JTROOT/cores/$1" ]; then
+        echo "No folder for $1 core"
+        return 1
+    fi
+    # get the location relative to $CORES/corename
+    local cores=$(realpath $JTROOT/cores)
+    local cur=`pwd`
+    cur="${cur#$cores/}"
+    if [ "$cur" = `pwd` ]; then
+        # not in a core folder
+        cd $JTROOT/cores/$1/$2
         return
     fi
-    IFS=/ read -ra string <<< $(pwd)
-    j="/"
-    next=0
-    good=
-    for i in ${string[@]};do
-        if [ $next = 0 ]; then
-            j=${j}${i}/
+    # extract the path after the current core
+    cur="${cur#*/}"
+    cd "$JTROOT/cores/$1"
+
+    # replicate as much as possible from the previous location
+    IFS=/ read -ra folders <<< $cur
+    for i in ${folders[@]};do
+        if [ -d $i ]; then
+            cd $i
         else
-            next=0
-            j=${j}$1/
-        fi
-        if [ "$i" = cores ]; then
-            next=1
-            good=1
+            break
         fi
     done
-    if [[ $good && -d $j ]]; then
-        cd $j
-    else
-        cd $JTROOT/cores/$1
+}
+
+# change to a folder inside "$CORES/*/ver" folders
+function cdgame {
+    local setname=$1
+    if [ -z "$JTROOT" ]; then
+        echo Have you forgot to define JTROOT?
+        return 1
     fi
-    if [ $# = 2 ]; then
-        cd $2
+    if [ -z "$setname" ]; then
+        echo "Use cdgame <MAME setname>"
+        return 1
     fi
-    pwd
+    local path=$(find $JTROOT/cores -name "$1" -path "*/ver/$setname" -type d | head -n 1)
+    if [ -z "$path" ]; then echo "No $setname in verification folders"; return 1; fi
+    cd "$path"
 }
 
 if [ "$1" != "--quiet" ]; then
@@ -116,12 +130,6 @@ function __git_subdir {
     echo ${PWD##${JTROOT}/}
 }
 PS1='[$(__git_subdir)$(__git_ps1 " (%s)")]\$ '
-
-function jtpull {
-    cd $JTFRAME
-    git pull
-    cd -
-}
 
 # Displays all available macros
 # The argument is used to filter the output
@@ -169,37 +177,46 @@ function hexdiff {
     sdiff --suppress-common-lines <(xxd $1) <(xxd $2)
 }
 
+# starts gtkwave and opens the test dump file in the current folder
 function gw {
-    if [ -e test.lxt ]; then
-        gtkwave test.lxt &
-    elif [ -e test.fst ]; then
-        local DMPFILE=
-        if [ -e test.gtkw ]; then DMPFILE=test.gtkw; fi
-        gtkwave test.fst $DMPFILE &
-    elif [ -e test.vcd ]; then
-        gtkwave test.vcd &
-    else
+    local DIR=$(basename $(pwd))
+    local DMPFILE=
+    local FOUND=0
+    if [ -e test.gtkw ]; then DMPFILE=$DIR/test.gtkw; fi
+    for ext in lxt fst vcd; do
+        if [ -e test.$ext ]; then
+            # starts from .. so the folder name is shown on
+            # GTKWave's title bar
+            (cd ..; gtkwave $DIR/test.$ext $DMPFILE &)
+            FOUND=1
+            break
+        fi
+    done
+    if [ $FOUND = 0 ]; then
         echo "No test.lxt, test.fst, test.vcd in the current folder"
+        return 1
     fi
 }
 
-# check that git hooks are present
-cp --no-clobber $JTFRAME/bin/post-merge $(git rev-parse --git-path hooks)/post-merge
-
-# Recompiles jtframe quietly after each commit
-cd $JTFRAME
-JTFRAME_POSTCOMMIT=$(git rev-parse --git-path hooks)/post-commit
-if [ ! -e $JTFRAME_POSTCOMMIT ]; then
-    cat > $JTFRAME_POSTCOMMIT <<EOF
-    #!/bin/bash
-    jtframe > /dev/null
-    if [ $(git branch --no-color --show-current) = master ]; then
-        # automatically push changes to master branch
-        git push
+# set default jtframe target by calling the command-line target function
+export TARGET=sidi128
+function target {
+    if [ -z "$1" ]; then
+        echo $TARGET
+        return 0
     fi
-EOF
-    chmod +x $JTFRAME_POSTCOMMIT
-fi
+    if [ ! -d $JTFRAME/target/$1 ]; then
+        echo "$1 is not a valid JTFRAME target"
+        return 1
+    fi
+    export TARGET=$1
+    echo $TARGET
+}
+
+# check that git hooks are present
+for HOOK in $JTFRAME/bin/hooks/*; do
+    echo cp --update $HOOK $(git rev-parse --git-path hooks)
+done
 
 if ! git config -l | grep instead > /dev/null; then
     cat<<EOF

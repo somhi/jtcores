@@ -1,9 +1,14 @@
 [global]
 # info = [ {tag="mameversion", value="0229"} ]
-mraauthor=["jotego"]
+author=["jotego"]
 
 [parse]
 sourcefile=[ "renegade.cpp" ]
+
+[Audio]
+volume = [
+    { machine="renegade", value=0xFF },
+]
 
 [buttons]
 Names = [

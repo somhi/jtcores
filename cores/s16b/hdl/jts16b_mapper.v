@@ -108,6 +108,8 @@ module jts16b_mapper(
     output reg [ 7:0] st_dout
 );
 
+parameter FNUM = 7'd29, FDEN = 8'd146;
+
 reg  [ 1:0] dtack_cyc;    // number of DTACK cycles
 reg  [ 7:0] mmr[0:31];
 reg         bus_rq;
@@ -173,10 +175,13 @@ assign cpu_haltn = ~mmr[2][1] | cpu_sel;
 assign cpu_berrn = 1;
 assign sndmap_dout = mmr[3];
 
-reg rst_aux, status_msb;
+reg rst_aux, status_msb, rst_req;
 
 always @(negedge clk) begin
-    { cpu_rst, rst_aux } <= { rst_aux, (mmr[2][0]&~cpu_sel) | rst };
+    rst_req <= (mmr[2][0]&~cpu_sel) | rst;
+    if( rst_req ) cpu_rst <= 1;
+    else if( !last_vint && vint && !bus_mcu ) cpu_rst <= 0;
+    // { cpu_rst, rst_aux } <= { rst_aux, (mmr[2][0]&~cpu_sel) | rst };
 end
 
 wire [15:0] mcu_addr_s;
@@ -288,7 +293,7 @@ end
 // DTACK generation
 wire [15:0] fave, fworst;
 
-jtframe_68kdtack_cen #(.W(8),.RECOVERY(1),.MFREQ(50_349)) u_dtack(
+jtframe_68kdtack_cen #(.W(8),.RECOVERY(1)) u_dtack(
     .rst        ( rst       ),
     .clk        ( clk       ),
     .cpu_cen    ( cpu_cen   ),
@@ -298,14 +303,13 @@ jtframe_68kdtack_cen #(.W(8),.RECOVERY(1),.MFREQ(50_349)) u_dtack(
     .bus_legit  ( 1'b0      ),
     .ASn        ( cpu_asn || cpu_fc[1:0]==2'b11  ),  // BUSn = ASn | (LDSn & UDSn)
     .DSn        ( cpu_dsn   ),
-    .num        ( 7'd29     ),  // numerator
-    .den        ( 8'd146    ),  // denominator
+    .num        ( FNUM      ),  // numerator
+    .den        ( FDEN      ),  // denominator
     .DTACKn     ( cpu_dtackn ),
     .wait2      ( dtack_cyc==2 ),
     .wait3      ( dtack_cyc==3 ),
     .fave       ( fave      ),
-    .fworst     ( fworst    ),
-    .frst       ( 1'b0      )
+    .fworst     ( fworst    )
 );
 
 always @(posedge clk) begin
@@ -344,7 +348,7 @@ always @(posedge clk) begin
                 wrmem   <= 0;
                 rdmem   <= 0;
                 bus_rq  <= 0;
-                if(!cpu_rst && cpu_haltn) bus_mcu <= 0;
+                /*if(!cpu_rst && cpu_haltn)*/ bus_mcu <= 0;
                 if( rdmem ) begin
                     {mmr[0], mmr[1]} <= bus_dout;
                     `ifdef SIMULATION

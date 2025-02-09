@@ -23,13 +23,16 @@ module jts16_game(
 `ifndef S16B
     localparam SNDW=15;
     wire [7:0] sndmap_dout=0;
+    wire       mute_n;
 
     assign snd_addr[18:15]=0;
+    assign mute = ~mute_n;
 `else
     localparam SNDW=19;
 
     wire [7:0] sndmap_din, sndmap_dout;
     wire       sndmap_rd, sndmap_wr, sndmap_pbf;
+    assign mute = 0;
 `endif
 
 // clock enable signals
@@ -47,6 +50,8 @@ wire        vram_cs, ram_cs;
 wire [13:2] pre_char_addr;
 wire [17:2] pre_scr1_addr, pre_scr2_addr;
 wire [20:1] pre_obj_addr;
+wire [15:0] ram_data;
+wire        ram_ok;
 
 // CPU interface
 wire [12:1] cpu_addr;
@@ -86,12 +91,19 @@ reg  [7:0] st_mux;
 
 assign { dipsw_b, dipsw_a } = dipsw[15:0];
 assign dsn                  = { UDSWn, LDSWn };
-assign game_led             = 1;
 assign debug_view           = st_dout;
 assign st_dout              = st_mux;
 assign xram_dsn             = dsn;
 assign xram_we              = ~main_rnw;
 assign xram_din             = main_dout;
+// dummy ports
+assign nvram_addr           = 0;
+assign nvram_we             = 0;
+assign nvram_din            = 0;
+// Work RAM (16kB)/ other RAM
+assign ram_ok               = ~xram_cs | xram_ok;
+assign ram_data             =  xram_cs ? xram_data : wram_dout;
+assign ioctl_din            = 0;
 
 always @(posedge clk) begin
     case( st_addr[7:4] )
@@ -120,7 +132,7 @@ end
 `ifndef S16B
 assign key_mcaddr=0;
 `endif
-
+/* verilator tracing_on */
 `ifndef NOMAIN
 `JTS16_MAIN u_main(
     .rst        ( rstx      ),
@@ -147,8 +159,8 @@ assign key_mcaddr=0;
     .rowscr_en  ( rowscr_en ),
     // RAM access
     .ram_cs     ( ram_cs    ),
-    .ram_data   ( xram_data ),
-    .ram_ok     ( xram_ok   ),
+    .ram_data   ( ram_data  ),
+    .ram_ok     ( ram_ok    ),
     // CPU bus
     .cpu_dout   ( main_dout ),
     .UDSWn      ( UDSWn     ),
@@ -194,7 +206,7 @@ assign key_mcaddr=0;
     .snd_latch   ( snd_latch  ),
     .snd_irqn    ( snd_irqn   ),
     .snd_ack     ( snd_ack    ),
-    .sound_en    ( sound_en   ),
+    .sound_en    ( mute_n     ),
 `else
     .pxl_cen     ( pxl_cen    ),
     .sndmap_rd   ( sndmap_rd  ),
@@ -210,16 +222,13 @@ assign key_mcaddr=0;
     .dip_test    ( dip_test   ),
     .dipsw_a     ( dipsw_a    ),
     .dipsw_b     ( dipsw_b    ),
+`ifdef S16B
+    .dipsw_c     ( dipsw[16+:8]),
+`endif
     // Status report
     .debug_bus   ( debug_bus  ),
     .st_addr     ( st_addr    ),
-    .st_dout     ( st_main    ),
-    // NVRAM dump
-    .ioctl_din   ( `ifdef JTFRAME_IOCTL_RD ioctl_din `endif ),
-`ifdef S16B
-    .ioctl_addr  ( prog_addr[16:0] )
-`else
-    .ioctl_addr  ( prog_addr[15:0] ) `endif
+    .st_dout     ( st_main    )
 );
 `else
     assign flip      = 0;
@@ -233,7 +242,7 @@ assign key_mcaddr=0;
     assign main_rnw  = 1;
     assign main_dout = 0;
     assign video_en  = 1;
-    assign sound_en  = 0; // active low (?)
+    assign mute_n    = 0; // active low (?)
     `ifdef S16B
         reg aux_obf = 0;
         reg [7:0] aux_dout=0;
@@ -269,18 +278,12 @@ assign key_mcaddr=0;
     `endif
 `endif
 /* verilator tracing_off */
-`ifndef NOSOUND
 `JTS16_SND u_sound(
     .rst        ( rst       ),
     .clk        ( clk       ),
 
     .cen_fm     ( cen_fm    ),   // 4MHz or 5MHz
     .cen_fm2    ( cen_fm2   ),   // 2MHz
-
-    .fxlevel    (dip_fxlevel),
-    .enable_fm  ( enable_fm ),
-    .enable_psg ( enable_psg),
-
 `ifdef S16B
     // System 16B
     .cen_snd    ( cen_snd   ),  // 5MHz
@@ -299,7 +302,6 @@ assign key_mcaddr=0;
 `else
     // System 16A
     .cen_pcm    ( cen6      ),  // 6MHz
-    .sound_en   ( sound_en  ),
 
     .latch      ( snd_latch ),
     .irqn       ( snd_irqn  ),
@@ -325,21 +327,11 @@ assign key_mcaddr=0;
     .rom_ok     ( snd_ok    ),
 
     // Sound output
-    .snd        ( snd       ),
-    .sample     ( sample    ),
-    .peak       ( snd_clip  )
+    .fm_l       ( fm_l      ),
+    .fm_r       ( fm_r      ),
+    .pcm        ( pcm       )
 );
-`else
-    assign snd      = 0;
-    assign snd_cs   = 0;
-    assign sample   = 0;
-    assign snd_addr = 0;
-    assign snd_ack  = 1;
-    `ifdef SIMULATION
-    assign pcm_cs   = 0;
-    assign pcm_addr = 0;
-    `endif
-`endif
+
 
 `ifdef S16B
 assign pcm_cs   = 0;
@@ -448,11 +440,14 @@ jts16_mem u_mem(
 
     // Main CPU
     .main_cs    ( main_cs   ),
+    .main_rnw   ( main_rnw  ),
+    .main_dsn   ( dsn       ),
     .vram_cs    ( vram_cs   ),
     .ram_cs     ( ram_cs    ),
     .main_addr  ( main_addr ),
     .xram_cs    ( xram_cs   ),
     .xram_addr  ( xram_addr ),
+    .wram_we    ( wram_we   ),
 
     // Sound CPU
     .mc8123_we  ( mc8123_we ),

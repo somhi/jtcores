@@ -1,6 +1,6 @@
 [global]
 # info = [ {tag="mameversion", value="0229"} ]
-mraauthor=["jotego"]
+author=["jotego"]
 
 [features]
 # qsound=true
@@ -8,6 +8,11 @@ mraauthor=["jotego"]
 
 [parse]
 sourcefile=[ "mikie.cpp" ]
+
+[Audio]
+volume = [
+    { machine="mikie", value=0x56 },
+]
 
 [buttons]
 names=[

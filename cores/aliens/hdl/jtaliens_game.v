@@ -28,6 +28,7 @@ wire        cpu_rnw, cpu_irq_n, cpu_nmi_n;
 wire [ 7:0] tilesys_dout, objsys_dout,
             obj_dout, pal_dout, cpu_dout,
             st_main, st_video, st_snd;
+wire        tilesys_rom_dtack;
 wire [ 1:0] prio;
 reg  [ 7:0] debug_mux;
 reg  [ 1:0] game_id;
@@ -46,16 +47,9 @@ always @(posedge clk) begin
 end
 
 always @(posedge clk) begin
-    if( prog_addr==0 && prog_we && header )
+    if( prog_addr==1 && prog_we && header )
         { game_id, gx878 } <= prog_data[2:0];
 end
-
-// always @(*) begin
-//     post_addr = prog_addr;
-//     if( prog_ba[1] ) begin
-//         post_addr[]
-//     end
-// end
 
 /* verilator tracing_on */
 jtaliens_main u_main(
@@ -91,6 +85,7 @@ jtaliens_main u_main(
     .nmi_n          ( cpu_nmi_n     ),
 
     .tilesys_dout   ( tilesys_dout  ),
+    .tilesys_rom_dtack  ( tilesys_rom_dtack ),
     .objsys_dout    ( objsys_dout   ),
 
     .pal_dout       ( pal_dout      ),
@@ -147,9 +142,9 @@ jtaliens_sound u_sound(
     .pcmb_ok    ( pcmb_ok       ),
 
     // Sound output
-    .snd        ( snd           ),
-    .sample     ( sample        ),
-    .peak       ( game_led      ),
+    .fm_l       ( fm_l          ),
+    .fm_r       ( fm_r          ),
+    .pcm        ( pcm           ),
     // Debug
     .debug_bus  ( debug_bus     ),
     .st_dout    ( st_snd        )
@@ -183,6 +178,7 @@ jtaliens_video u_video (
     .cpu_addr       (main_addr[15:0]),
     .cpu_dout       ( cpu_dout      ),
     .tilesys_dout   ( tilesys_dout  ),
+    .tilesys_rom_dtack ( tilesys_rom_dtack ),
     .objsys_dout    ( objsys_dout   ),
     .pal_dout       ( pal_dout      ),
     .rmrd           ( rmrd          ),
@@ -201,6 +197,7 @@ jtaliens_video u_video (
     .lyra_cs        ( lyra_cs       ),
     .lyrb_cs        ( lyrb_cs       ),
     .lyro_cs        ( lyro_cs       ),
+    .lyra_ok        ( lyra_ok       ),
     .lyro_ok        ( lyro_ok       ),
     // pixels
     .red            ( red           ),

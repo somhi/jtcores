@@ -1,4 +1,4 @@
-[all]
+[*]
 include ../../kicker/cfg/common.def
 
 CORENAME=JTROC
@@ -8,6 +8,5 @@ SCR_START =0x0C000
 OBJ_START =0x10000
 JTFRAME_PROM_START=0x18000
 
-JTFRAME_BETA
 # Video
 JTFRAME_VERTICAL

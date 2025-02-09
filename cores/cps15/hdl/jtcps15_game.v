@@ -20,7 +20,7 @@ module jtcps15_game(
     `include "jtframe_game_ports.inc" // see $JTFRAME/hdl/inc/jtframe_game_ports.inc
 );
 
-wire        clk_gfx, rst_gfx;
+wire        clk_gfx, rst_gfx, hold_rst;
 wire        snd_cs, qsnd_cs, main_ram_cs, main_vram_cs, main_rom_cs,
             rom0_cs, rom1_cs,
             vram_dma_cs;
@@ -66,12 +66,13 @@ wire        main2qs_cs, main_busakn, main_waitn;
 wire        sclk, sdi, sdo, scs;
 
 assign { dipsw_c, dipsw_b, dipsw_a } = ~24'd0;
-assign game_led = 0;
+assign snd_peak = 0;
 
 wire [ 1:0] dsn;
 wire        cen16, cen12, cen8, cen10b;
 wire        cpu_cen, cpu_cenb;
 wire        turbo;
+reg         rst_game;
 
 `ifdef JTCPS_TURBO
 assign turbo = 1;
@@ -79,6 +80,7 @@ assign turbo = 1;
 assign turbo = status[6];
 `endif
 
+assign snd_vu     = 0;
 assign debug_view = 0;
 assign ba1_din=0, ba2_din=0, ba3_din=0,
        ba1_dsn=3, ba2_dsn=3, ba3_dsn=3;
@@ -103,19 +105,11 @@ jtframe_cen48 u_cen48(
     .cen3qb     (               ),
     .cen1p5b    (               )
 );
-/* verilator lint_on PINMISSING */
-jtframe_cen96 u_pxl_cen(
-    .clk    ( clk96     ),    // 96 MHz
-    .cen16  ( pxl2_cen  ),
-    .cen12  (           ),
-    .cen8   ( pxl_cen   ),
-    // Unused:
-    .cen6   (           ),
-    .cen6b  (           )
-);
 
-assign clk_gfx = clk96;
-assign rst_gfx = rst96;
+assign clk_gfx = clk;
+assign rst_gfx = rst;
+
+always @(posedge clk) rst_game <= hold_rst | rst48;
 
 localparam REGSIZE=24;
 
@@ -126,7 +120,7 @@ assign busack = busack_cpu | turbo;
 
 `ifndef NOMAIN
 jtcps1_main u_main(
-    .rst        ( rst48             ),
+    .rst        ( rst_game          ),
     .clk        ( clk48             ),
     .cen10      ( cpu_cen           ),
     .cen10b     ( cpu_cenb          ),
@@ -311,7 +305,7 @@ jtcps1_video #(REGSIZE) u_video(
 jtcps15_sound u_sound(
     .rst        ( rst               ),
     .clk48      ( clk48             ),
-    .clk96      ( clk96             ),
+    .clk96      ( clk               ),
     .cen8       ( cen8              ),
     .vol_up     ( 1'b0              ),
     .vol_down   ( 1'b0              ),
@@ -366,6 +360,7 @@ jtcps1_sdram #(.CPS(15), .REGSIZE(REGSIZE)) u_sdram (
     .clk_gfx     ( clk_gfx       ),
     .clk_cpu     ( clk48         ),
     .LVBL        ( LVBL          ),
+    .hold_rst    ( hold_rst      ),
 
     .ioctl_rom   ( ioctl_rom     ),
     .dwnld_busy  ( dwnld_busy    ),

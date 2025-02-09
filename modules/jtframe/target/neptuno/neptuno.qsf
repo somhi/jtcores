@@ -26,7 +26,7 @@ set_global_assignment -name TOP_LEVEL_ENTITY neptuno_top
 set_global_assignment -name ORIGINAL_QUARTUS_VERSION 11.0
 set_global_assignment -name PROJECT_CREATION_TIME_DATE "17:14:01  JUNE 12, 2021"
 set_global_assignment -name LAST_QUARTUS_VERSION 13.1
-set_global_assignment -name PROJECT_OUTPUT_DIRECTORY ${OUTPUTDIR}
+set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
 set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
 set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
 set_global_assignment -name DEVICE_FILTER_PACKAGE "ANY QFP"
@@ -227,7 +227,7 @@ set_instance_assignment -name FAST_OUTPUT_ENABLE_REGISTER ON -to SDRAM_DQ[*]
 set_instance_assignment -name FAST_INPUT_REGISTER ON -to SDRAM_DQ[*]
 set_global_assignment -name FORCE_SYNCH_CLEAR ON
 
-set_global_assignment -name QIP_FILE game.qip
+set_global_assignment -name QIP_FILE files.qip
 
 # NeptUNO also shares the MIST macro
 set_global_assignment -name VERILOG_MACRO "MIST=1"
@@ -237,5 +237,5 @@ set_global_assignment -name VERILOG_MACRO "JTFRAME_OSD_LOAD=1"
 
 # set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to SPI_SCK
 set_global_assignment -name SEARCH_PATH "../hdl"
-set_global_assignment -name SEARCH_PATH "${MODULES}/jtframe/hdl/inc"
+set_global_assignment -name SEARCH_PATH "{{ env "JTFRAME" }}/hdl/inc"
 # Leave the blank line

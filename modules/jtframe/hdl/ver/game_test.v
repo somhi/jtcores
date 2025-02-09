@@ -20,6 +20,10 @@
 `define JTFRAME_BUTTONS 2
 `endif
 
+`ifndef JTFRAME_SIM_SNDEN
+`define JTFRAME_SIM_SNDEN 6'h3f
+`endif
+
 // Top level for verilator simulations
 
 module game_test(
@@ -92,7 +96,6 @@ module game_test(
     output  signed [15:0] snd_left,
     output  signed [15:0] snd_right,
     output          sample,
-    output          game_led,
     input           enable_psg,
     input           enable_fm,
 
@@ -141,8 +144,6 @@ module game_test(
 
 `ifdef JTFRAME_BA0_AUTOPRECH
     localparam BA0_AUTOPRECH = `JTFRAME_BA0_AUTOPRECH;
-`elsif JTFRAME_SDRAM_BANKS
-    localparam BA0_AUTOPRECH = 0;
 `else
     // if only one bank is used, it makes to precharge as default option
     localparam BA0_AUTOPRECH = 1;
@@ -227,33 +228,8 @@ assign SDRAM_DQM= { SDRAM_DQMH, SDRAM_DQML };
     assign ioctl_din = 0;
 `endif
 
-`ifndef JTFRAME_SDRAM_BANKS
-    wire [ 7:0] prog_data8;
-    assign prog_data = {2{prog_data8}};
-    assign ba_rd[3:1] = 0;
-    assign ba_wr      = 0;
-    assign prog_ba    = 0;
-    // tie down unused bank signals
-    assign ba1_addr   = 0;
-    assign ba2_addr   = 0;
-    assign ba3_addr   = 0;
-    assign ba0_din    = 0;
-    assign ba0_dsn    = 3;
-    assign ba1_din    = 0;
-    assign ba1_dsn    = 3;
-    assign ba2_din    = 0;
-    assign ba2_dsn    = 3;
-    assign ba3_din    = 0;
-    assign ba3_dsn    = 3;
-`endif
-
 localparam GAME_BUTTONS=`JTFRAME_BUTTONS;
-
-`ifdef JTFRAME_4PLAYERS
-localparam STARTW=4;
-`else
 localparam STARTW=2;
-`endif
 
 `ifndef JTFRAME_STEREO
 assign snd_right = snd_left;
@@ -308,9 +284,7 @@ jtframe_sdram64 #(
 `ifdef JTFRAME_BA3_WEN
     .BA3_WEN      ( 1             ), `endif
 `ifdef JTFRAME_SDRAM96
-    .HF(1),
-    .SHIFTED(1)     // This is different from jtframe_board's in order to work
-                    // in the verilator test bench
+    .HF(1)
 `else
     .HF(0),
     `ifdef JTFRAME_180SHIFT
@@ -522,22 +496,14 @@ u_game(
     .rst         ( rst            ),
     // The main clock is always the same one as the SDRAM
     .clk         ( clk_rom        ),
-`ifdef JTFRAME_CLK96
     .clk96       ( clk96          ),
     .rst96       ( rst            ),
-`endif
 `ifdef JTFRAME_CLK48
     .clk48       ( clk48          ),
     .rst48       ( rst            ),
 `endif
-`ifdef JTFRAME_CLK24
     .clk24       ( clk24          ),
     .rst24       ( rst            ),
-`endif
-`ifdef JTFRAME_CLK6
-    .clk6        ( clk6           ),
-    .rst6        ( rst            ),
-`endif
     // Video
     .pxl2_cen    ( pxl2_cen       ),
     .pxl_cen     ( pxl_cen        ),
@@ -548,41 +514,28 @@ u_game(
     .LVBL        ( LVBL           ),
     .HS          ( HS             ),
     .VS          ( VS             ),
-    // LED
-    .game_led    ( game_led       ),
 
-    .cab_1p( cab_1p[STARTW-1:0] ),
-    .coin  ( coin[STARTW-1:0]  ),
+    .cab_1p      ( cab_1p         ),
+    .coin        ( coin           ),
     // Joysticks
-    .joystick1    ( joystick1[GAME_BUTTONS+3:0]   ),
-    .joystick2    ( joystick2[GAME_BUTTONS+3:0]   ),
-    `ifdef JTFRAME_4PLAYERS
-    .joystick3    ( joystick3[GAME_BUTTONS+3:0]   ),
-    .joystick4    ( joystick4[GAME_BUTTONS+3:0]   ),
-    `endif
+    .joystick1   ( joystick1[GAME_BUTTONS+3:0]   ),
+    .joystick2   ( joystick2[GAME_BUTTONS+3:0]   ),
+    .joystick3   ( joystick3[GAME_BUTTONS+3:0]   ),
+    .joystick4   ( joystick4[GAME_BUTTONS+3:0]   ),
 
-`ifdef JTFRAME_DIAL
-    .dial_x (2'd0), .dial_y(2'd0), `endif
+    .dial_x (2'd0), .dial_y(2'd0),
 
-`ifdef JTFRAME_ANALOG
     .joyana_l1    ( joyana_l1        ),
     .joyana_l2    ( joyana_l2        ),
-    `ifdef JTFRAME_ANALOG_DUAL
-        .joyana_r1    ( joyana_r1        ),
-        .joyana_r2    ( joyana_r2        ),
-    `endif
-    `ifdef JTFRAME_4PLAYERS
-        .joyana_l3( joyana_l3        ),
-        .joyana_l4( joyana_l4        ),
-        `ifdef JTFRAME_ANALOG_DUAL
-            .joyana_r3( joyana_r3        ),
-            .joyana_r4( joyana_r4        ),
-        `endif
-    `endif
-`endif
+    .joyana_l3    ( joyana_l3        ),
+    .joyana_l4    ( joyana_l4        ),
+    .joyana_r1    ( joyana_r1        ),
+    .joyana_r2    ( joyana_r2        ),
+    .joyana_r3    ( joyana_r3        ),
+    .joyana_r4    ( joyana_r4        ),
 
 `ifdef JTFRAME_MOUSE
-    .mouse_1p( 16'd0 ), .mouse_2p( 16'd0 ), `endif
+    .mouse_1p( 16'd0 ), .mouse_2p( 16'd0 ), .mouse_strobe( 2'd0 ), `endif
 
     // Sound control
     .enable_fm   ( enable_fm      ),
@@ -590,8 +543,8 @@ u_game(
     // PROM programming
     .ioctl_addr  ( ioctl_addr     ),
     .ioctl_dout  ( ioctl_dout     ),
-    .ioctl_wr    ( ioctl_wr       ), `ifdef JTFRAME_IOCTL_RD
-    .ioctl_ram   ( ioctl_ram      ),
+    .ioctl_wr    ( ioctl_wr       ),
+    .ioctl_ram   ( ioctl_ram      ), `ifdef JTFRAME_IOCTL_RD
     .ioctl_din   ( ioctl_din      ), `endif
     // ROM load
     .ioctl_rom   ( ioctl_rom      ),
@@ -599,7 +552,6 @@ u_game(
     .dwnld_busy  ( dwnld_busy     ),
     .data_read   ( data_read      ),
 
-`ifdef JTFRAME_SDRAM_BANKS
     // Bank 0: allows R/W
     .ba0_addr   ( ba0_addr      ),
     .ba1_addr   ( ba1_addr      ),
@@ -626,15 +578,6 @@ u_game(
     .prog_dok   ( prog_dok      ),
     .prog_dst   ( prog_dst      ),
     .prog_data  ( prog_data     ),
-`else
-    .sdram_req  ( ba_rd[0]      ),
-    .sdram_addr ( ba0_addr      ),
-    .data_dst   ( ba_dst[0] | prog_dst ),
-    .data_rdy   ( ba_rdy[0] | prog_rdy ),
-    .sdram_ack  ( ba_ack[0] | prog_ack ),
-
-    .prog_data  ( prog_data8    ),
-`endif
 
     // common ROM-load interface
     .prog_addr  ( prog_addr     ),
@@ -677,6 +620,10 @@ u_game(
     .snd_right   ( snd_right      ),
     `endif
     .sample      ( sample         ),
+    .snd_en      (`JTFRAME_SIM_SNDEN),
+    .snd_vol     ( 8'h80          ), // matching value in jtframe_volume.v
+    .snd_vu      (                ),
+    .snd_peak    (                ),
     // Debug
 `ifdef JTFRAME_STATUS
     .st_addr     ( st_addr        ),

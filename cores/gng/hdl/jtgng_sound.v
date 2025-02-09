@@ -35,14 +35,11 @@ module jtgng_sound(
     input            snd_int,
     // Interface with second sound CPU (Tiger Road)
     output reg [7:0] snd2_latch,
-    // Interface with MCU (F1 Dream)
-    // input   [7:0]    snd_din,
+    // Interface with MCU (Avengers)
+    input   [7:0]    mcu_sdin,
+    output           mcu_srd,
     // output  [7:0]    snd_dout,
     // output           snd_mcu_wr,
-    // Sound control
-    input            enable_psg,
-    input            enable_fm,
-    input   [1:0]    psg_level,
     // ROM
     output  [14:0]   rom_addr,
     output  reg      rom_cs,
@@ -50,17 +47,14 @@ module jtgng_sound(
     input            rom_ok,
 
     // Sound output
-    output  signed [15:0] ym_snd,
-    output  sample,
-    output  peak,
+    output signed [15:0] fm0, fm1,
+    output        [ 9:0] psg0, psg1,
 
     // Debug
     input      [ 7:0] debug_bus,
     output reg [ 7:0] debug_view
 );
 parameter       LAYOUT=0;
-parameter [7:0] FM_GAIN=8'h08;
-parameter       PSG_ATT=0;      // adds attenuation to the psg_level values
 `ifndef NOSOUND
     // 0 GnG, most games
     // 1 Commando:
@@ -89,29 +83,17 @@ localparam READ_FM    = LAYOUT==3 || LAYOUT==4 || LAYOUT==8 || LAYOUT==10;
 localparam FM_SAMECEN = LAYOUT==3 || LAYOUT==4 || LAYOUT==8 || LAYOUT==10;
 
 wire [15:0] A, fave;
-wire        iorq_n, m1_n, wr_n, rd_n;
+wire        iorq_n, m1_n, wr_n, rd_n, cenfm;
 wire [ 7:0] ram_dout, dout, fm0_dout, fm1_dout;
-reg         fm1_cs,fm0_cs, latch_cs, ram_cs;
+reg         fm1_cs, fm0_cs, latch_cs, ram_cs, mcu_cs;
 wire        mreq_n, rfsh_n;
 wire [ 7:0] fm0_debug, fm1_debug;
 
-assign rom_addr   = A[14:0];
+assign rom_addr = A[14:0];
+assign cenfm    = FM_SAMECEN ? cen3 : cen1p5;
+assign mcu_srd  = mcu_cs && !rd_n;
 // assign snd_dout   = dout;
 // assign snd_mcu_wr = 1'b0;
-reg [7:0] psg_gain;
-
-always @(posedge clk) begin
-    if( !enable_psg )
-        psg_gain <= 8'h0;
-    else begin
-        case( psg_level )
-            2'd0: psg_gain <= 8'h04 >> PSG_ATT;
-            2'd1: psg_gain <= 8'h08 >> PSG_ATT;
-            2'd2: psg_gain <= 8'h10 >> PSG_ATT;
-            2'd3: psg_gain <= 8'h20 >> PSG_ATT;
-        endcase
-    end
-end
 
 always @* begin
     case( debug_bus[7:6] )
@@ -127,6 +109,7 @@ always @(*) begin
     latch_cs = 1'b0;
     fm0_cs   = 1'b0;
     fm1_cs   = 1'b0;
+    mcu_cs   = 1'b0;
     if( rfsh_n && !mreq_n)
         case( LAYOUT )
         0,4:  // Memory map for: GnG, Gun Smoke, 1943, Black Tiger, SectionZ
@@ -139,8 +122,9 @@ always @(*) begin
                         // 1943 has the security device mapped at A[12:11]==2'b11
                         // but it doesn't use it at all. So I am leaving it out.
                 3'b111: begin
-                    fm0_cs = ~A[1];
-                    fm1_cs =  A[1];
+                    fm0_cs = A[2:1]==0;
+                    fm1_cs = A[2:1]==1;
+                    mcu_cs = A[2:1]==3;
                 end
                 default:;
             endcase
@@ -221,19 +205,19 @@ reg [7:0] din;
 wire fm0_mx = fm0_cs && READ_FM;
 wire fm1_mx = fm1_cs && READ_FM;
 
-always @(posedge clk)
+always @(posedge clk) begin
     case( 1'b1 )
         rom_cs:   din = rom_data;
         fm0_mx:   din = fm0_dout;
         fm1_mx:   din = fm1_dout;
         latch_cs: din = snd_latch;
         ram_cs:   din = ram_dout;
+        mcu_cs:   din = mcu_sdin;
         default:  din = 8'hff;
     endcase
-
+end
 
 reg reset_n=1'b0;
-
 reg int_n;
 
 generate
@@ -292,7 +276,7 @@ always @(posedge clk or negedge reset_n)
 
 reg last_rom_cs, rom_lock;
 
-always @(posedge clk or negedge reset_n)
+always @(posedge clk or negedge reset_n) begin
     if( !reset_n )
         wait_n <= 1'b1;
     else begin
@@ -301,6 +285,7 @@ always @(posedge clk or negedge reset_n)
         if( rom_ok ) rom_lock <= 1'b0;
         wait_n <= !fm_lock && !rom_lock;
     end
+end
 
 jtframe_z80 u_cpu(
     .rst_n      ( reset_n     ),
@@ -323,26 +308,6 @@ jtframe_z80 u_cpu(
     .dout       ( dout        )
 );
 
-wire signed [15:0] fm0_snd,  fm1_snd;
-wire        [ 9:0] psg0_snd, psg1_snd;
-wire        [10:0] psg01 = {1'b0,psg0_snd} + {1'b0,psg1_snd};
-// wire signed [15:0]
-//     psg0_signed = {1'b0, psg0_snd, 4'b0 },
-//     psg1_signed = {1'b0, psg1_snd, 4'b0 };
-
-wire signed [10:0] psg2x; // DC-removed version of psg01
-wire cenfm = FM_SAMECEN ? cen3 : cen1p5;
-
-jt49_dcrm2 #(.sw(11)) u_dcrm (
-    .clk    (  clk    ),
-    .cen    (  cenfm  ),
-    .rst    (  rst    ),
-    .din    (  psg01  ),
-    .dout   (  psg2x  )
-);
-
-wire signed [7:0]  fm_gain2 = enable_fm  ?  FM_GAIN : 8'h0;
-
 jtframe_freqinfo #(
     .KHZ   (        0 ),
     .MFREQ (   24_000 )
@@ -354,25 +319,6 @@ jtframe_freqinfo #(
     .fworst (       )
 );
 
-jtframe_mixer #(.W2(11)) u_mixer(
-    .rst    ( rst          ),
-    .clk    ( clk          ),
-    .cen    ( cenfm        ),
-
-    .ch0    ( fm0_snd      ),
-    .ch1    ( fm1_snd      ),
-    .ch2    ( psg2x        ),
-    .ch3    ( 16'd0        ),
-
-    .gain0  ( fm_gain2     ),
-    .gain1  ( fm_gain2     ),
-    .gain2  ( psg_gain     ),
-    .gain3  ( 8'd0         ),
-
-    .mixed  ( ym_snd       ),
-    .peak   ( peak         )
-);
-
 jt03 u_fm0(
     .rst    ( ~reset_n  ),
     // CPU interface
@@ -382,9 +328,9 @@ jt03 u_fm0(
     .addr   ( A[0]       ),
     .cs_n   ( ~fm0_cs    ),
     .wr_n   ( wr_n       ),
-    .psg_snd( psg0_snd   ),
-    .fm_snd ( fm0_snd    ),
-    .snd_sample ( sample ),
+    .psg_snd( psg0       ),
+    .fm_snd ( fm0        ),
+    .snd_sample (        ),
     .dout   ( fm0_dout   ),
     .irq_n  ( intn_fm0   ),
     // unused ports
@@ -411,8 +357,8 @@ jt03 u_fm1(
     .addr   ( A[0]       ),
     .cs_n   ( ~fm1_cs    ),
     .wr_n   ( wr_n       ),
-    .psg_snd( psg1_snd   ),
-    .fm_snd ( fm1_snd    ),
+    .psg_snd( psg1       ),
+    .fm_snd ( fm1        ),
     .dout   ( fm1_dout   ),
     .irq_n  ( intn_fm1   ),
     // unused ports
@@ -430,23 +376,14 @@ jt03 u_fm1(
     //.debug_bus ( debug_bus ),
     .debug_view( fm1_debug )
 );
-
-`ifdef SIMULATION
-    integer fsnd;
-    initial begin
-        fsnd=$fopen("fm_sound.raw","wb");
-    end
-    always @(posedge sample) begin
-        $fwrite(fsnd,"%u", {fm0_snd, fm1_snd});
-    end
-`endif
 `else
-    initial snd2_latch=0;
-    initial debug_view=0;
-    initial rom_cs=0;
-    assign rom_addr=0;
-    assign ym_snd=0;
-    assign sample=0;
-    assign peak=0;
+    initial snd2_latch = 0;
+    initial debug_view = 0;
+    initial rom_cs     = 0;
+    assign  rom_addr   = 0;
+    assign  fm0        = 0;
+    assign  fm1        = 0;
+    assign  psg0       = 0;
+    assign  psg1       = 0;
 `endif
 endmodule // jtgng_sound

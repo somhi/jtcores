@@ -27,9 +27,23 @@ localparam [25:0] HEADER_LEN =`ifdef JTFRAME_HEADER     `JTFRAME_HEADER     `els
 parameter {{.Name}} = {{ if .Value }}{{.Value}}{{else}}`{{.Name}}{{ end}};
 {{- end}}
 
+{{- if .Ioctl.Dump }}
+/* verilator tracing_off */
+wire [7:0] ioctl_aux;
 `ifndef JTFRAME_IOCTL_RD
-wire ioctl_ram = 0;
+    assign ioctl_aux=0;
 `endif
+{{- range $k, $v := .Ioctl.Buses }}{{ if $v.Name}}
+wire [{{$v.DW}}-1:0] {{$v.Name}}_dimx;
+wire [  1:0] {{$v.Name}}_wemx;{{if $v.Amx}}
+wire [{{$v.AW}}-1:{{$v.AWl}}] {{$v.Amx}};{{ end }}{{end -}}
+{{end}}{{end}}
+
+// Audio channels {{ range .Audio.Channels }}{{ if .Name }}
+{{ if .Stereo }}wire {{ if not .Unsigned }}signed {{end}}{{ data_range . }} {{.Name}}_l, {{.Name}}_r;{{ else -}}
+wire {{ if not .Unsigned }}signed {{end}}{{ data_range . }} {{.Name}};{{ end }}{{end}}{{if .Rc_en}}
+wire {{if gt .Filters 1}}[{{sub .Filters 1}}:0] {{end}}{{.Name}}_rcen;{{end}}{{- end}}
+wire mute;
 // Additional ports
 {{range .Ports}}wire {{if .MSB}}[{{.MSB}}:{{.LSB}}]{{end}} {{.Name}};
 {{end}}
@@ -56,6 +70,7 @@ wire [21:0] raw_addr, post_addr;
 wire [25:0] pre_addr, dwnld_addr, ioctl_addr_noheader;
 wire [ 7:0] post_data;
 wire [15:0] raw_data;
+wire [ 7:0] pcb_id;
 wire        pass_io;
 {{ if .Clocks }}// Clock enable signals{{ end }}
 {{- range $k, $v := .Clocks }}
@@ -68,35 +83,55 @@ assign pass_io = header | ioctl_ram;
 assign ioctl_addr_noheader = `ifdef JTFRAME_HEADER header ? ioctl_addr : ioctl_addr - HEADER_LEN `else ioctl_addr `endif ;
 
 wire rst_h, rst24_h, rst48_h, hold_rst;
-
+`ifdef JTFRAME_CLK96
+wire clk48=clk;
+`endif
+/* verilator tracing_off */
 jtframe_rsthold u_hold(
     .rst    ( rst       ),
     .clk    ( clk       ),
     .hold   ( hold_rst  ),
-    .rst_h  ( rst_h     )
-`ifdef JTFRAME_CLK24 ,
+    .rst_h  ( rst_h     ),
     .rst24  ( rst24     ),
     .clk24  ( clk24     ),
     .rst24_h( rst24_h   )
-`endif
 `ifdef JTFRAME_CLK48 ,
     .rst48  ( rst48     ),
     .clk48  ( clk48     ),
     .rst48_h( rst48_h   )
 `endif
 );
-
+/* verilator tracing_on */
 jt{{if .Game}}{{.Game}}{{else}}{{.Core}}{{end}}_game u_game(
     .rst        ( rst_h     ),
     .clk        ( clk       ),
-`ifdef JTFRAME_CLK24
     .rst24      ( rst24_h   ),
     .clk24      ( clk24     ),
-`endif
 `ifdef JTFRAME_CLK48
     .rst48      ( rst48_h   ),
     .clk48      ( clk48     ),
 `endif
+    .rst96      ( rst96     ),
+    .clk96      ( clk96     ),
+    // Audio channels
+    {{if .Audio.Mute}}.mute( mute ),
+    {{end}}{{ range .Audio.Channels -}}
+    {{ if .Name }}{{ if .Stereo }}.{{.Name}}_l   ( {{.Name}}_l    ),
+    .{{.Name}}_r   ( {{.Name}}_r    ),{{ else -}}
+    .{{.Name}}     ( {{.Name}}      ),{{ end }}{{ end }}{{if .Rc_en}}
+    .{{.Name}}_rcen( {{.Name}}_rcen ),
+{{end}}{{ end}}
+    {{ if eq (len .Audio.Channels) 0 }}
+    // Sound output
+`ifdef JTFRAME_STEREO
+    .snd_left       ( snd_left      ),
+    .snd_right      ( snd_right     ),
+`else
+    .snd            ( snd           ),
+`endif
+    .sample         ( sample        ), {{ end }}
+    .snd_en         ( snd_en        ),
+    .snd_vol        ( snd_vol       ),
 {{- range $k,$v := .Clocks }} {{- range $v}}
     {{- range .Outputs }}
     .{{ . }}    ( {{ . }}    ), {{end}}{{end}}
@@ -113,32 +148,15 @@ jt{{if .Game}}{{.Game}}{{else}}{{.Core}}{{end}}_game u_game(
     // cabinet I/O
     .cab_1p   ( cab_1p  ),
     .coin     ( coin    ),
-    .joystick1      ( joystick1     ),
-    .joystick2      ( joystick2     ),
-    `ifdef JTFRAME_4PLAYERS
-    .joystick3      ( joystick3     ),
-    .joystick4      ( joystick4     ),
-    `endif
-`ifdef JTFRAME_ANALOG
-    .joyana_l1    ( joyana_l1        ),
-    .joyana_l2    ( joyana_l2        ),
-    `ifdef JTFRAME_ANALOG_DUAL
-        .joyana_r1    ( joyana_r1        ),
-        .joyana_r2    ( joyana_r2        ),
-    `endif
-    `ifdef JTFRAME_4PLAYERS
-        .joyana_l3( joyana_l3        ),
-        .joyana_l4( joyana_l4        ),
-        `ifdef JTFRAME_ANALOG_DUAL
-            .joyana_r3( joyana_r3        ),
-            .joyana_r4( joyana_r4        ),
-        `endif
-    `endif
-`endif
-`ifdef JTFRAME_DIAL
-    .dial_x         ( dial_x        ),
-    .dial_y         ( dial_y        ),
-`endif
+    .joystick1    ( joystick1        ), .joystick2    ( joystick2        ),
+    .joystick3    ( joystick3        ), .joystick4    ( joystick4        ), `ifdef JTFRAME_MOUSE
+    .mouse_1p     ( mouse_1p         ), .mouse_2p     ( mouse_2p         ), .mouse_strobe ( mouse_strobe ), `endif `ifdef JTFRAME_SPINNER
+    .spinner_1p   ( spinner_1p       ), .spinner_2p   ( spinner_2p       ), `endif
+    .joyana_l1    ( joyana_l1        ), .joyana_l2    ( joyana_l2        ),
+    .joyana_l3    ( joyana_l3        ), .joyana_l4    ( joyana_l4        ),
+    .joyana_r1    ( joyana_r1        ), .joyana_r2    ( joyana_r2        ),
+    .joyana_r3    ( joyana_r3        ), .joyana_r4    ( joyana_r4        ),
+    .dial_x       ( dial_x           ), .dial_y       ( dial_y           ),
     // DIP switches
     .status         ( status        ),
     .dipsw          ( dipsw         ),
@@ -148,15 +166,6 @@ jt{{if .Game}}{{.Game}}{{else}}{{.Core}}{{end}}_game u_game(
     .dip_flip       ( dip_flip      ),
     .dip_test       ( dip_test      ),
     .dip_fxlevel    ( dip_fxlevel   ),
-    // Sound output
-`ifdef JTFRAME_STEREO
-    .snd_left       ( snd_left      ),
-    .snd_right      ( snd_right     ),
-`else
-    .snd            ( snd           ),
-`endif
-    .sample         ( sample        ),
-    .game_led       ( game_led      ),
     .enable_psg     ( enable_psg    ),
     .enable_fm      ( enable_fm     ),
     // Ports declared in mem.yaml
@@ -191,9 +200,7 @@ jt{{if .Game}}{{.Game}}{{else}}{{.Core}}{{end}}_game u_game(
     .prog_data    ( pass_io ? ioctl_dout       : raw_data[7:0] ),
     .prog_we      ( pass_io ? ioctl_wr         : prog_we       ),
     .prog_ba      ( prog_ba        ), // prog_ba supplied in case it helps re-mapping addresses
-`ifdef JTFRAME_PROM_START
     .prom_we      ( prom_we        ),
-`endif
     {{- with .Download.Pre_addr }}
     // SDRAM address mapper during downloading
     .pre_addr     ( pre_addr       ),
@@ -209,10 +216,10 @@ jt{{if .Game}}{{.Game}}{{else}}{{.Core}}{{end}}_game u_game(
     .header       ( header         ),
 `endif
 `ifdef JTFRAME_IOCTL_RD
-    .ioctl_ram    ( ioctl_ram      ),
     .ioctl_din    ( {{.Ioctl.DinName}}      ),
     .ioctl_dout   ( ioctl_dout     ),
     .ioctl_wr     ( ioctl_wr       ), `endif
+    .ioctl_ram    ( ioctl_ram      ),
     .ioctl_cart   ( ioctl_cart     ),
     // Debug
     .debug_bus    ( debug_bus      ),
@@ -234,7 +241,7 @@ jt{{if .Game}}{{.Game}}{{else}}{{.Core}}{{end}}_game u_game(
 `endif
     .gfx_en      ( gfx_en        )
 );
-
+/* verilator tracing_off */
 assign dwnld_busy = ioctl_rom | prom_we; // prom_we is really just for sims
 assign dwnld_addr = {{if .Download.Pre_addr }}pre_addr{{else}}ioctl_addr{{end}};
 assign prog_addr = {{if .Download.Post_addr }}post_addr{{else}}raw_addr{{end}};
@@ -249,7 +256,6 @@ jtframe_dwnld #(
 `endif{{ if .Balut }}
     .BALUT      ( {{.Balut}}    ),  // Using offsets in header for
     .LUTSH      ( {{.Lutsh}}    ),  // bank assignment
-    .LUTDW      ( {{.Lutdw}}    ),
 {{else}}
 `ifdef JTFRAME_BA1_START
     .BA1_START ( BA1_START ),
@@ -284,9 +290,17 @@ jtframe_dwnld #(
     .header       ( header         ),
     .sdram_ack    ( prog_ack       )
 );
+
+jtframe_headerbyte #(.AW(6)) u_pcbid(
+    .clk          ( clk            ),
+    .header       ( header         ),
+    .ioctl_addr   ( ioctl_addr[5:0]),
+    .ioctl_dout   ( ioctl_dout     ),
+    .ioctl_wr     ( ioctl_wr       ),
+    .dout         ( pcb_id         )
+);
 `ifdef VERILATOR_KEEP_SDRAM /* verilator tracing_on */ `else /* verilator tracing_off */ `endif
-{{ $holded := false }}
-{{ $holded_slot := false }}
+{{ $assign_holdrst := true }}
 {{ range $bank, $each:=.SDRAM.Banks }}
 {{- if gt (len .Buses) 0 }}
 jtframe_{{.MemType}}_{{len .Buses}}slot{{with lt 1 (len .Buses)}}s{{end}} #(
@@ -294,22 +308,24 @@ jtframe_{{.MemType}}_{{len .Buses}}slot{{with lt 1 (len .Buses)}}s{{end}} #(
 {{- range $index, $each:=.Buses}}
     {{- if $first}}{{$first = false}}{{else}}, {{end}}
     // {{.Name}}
-    {{- if not .Rw }}
-    {{- with .Offset }}
+    {{- if .Rw }}{{ with .Dont_erase }}
+    .SLOT{{$index}}_ERASE(0),{{end}}
+    {{- else}}{{- with .Offset }}
     .SLOT{{$index}}_OFFSET({{.}}[21:0]),{{end}}{{end}}
     {{- with .Cache_size }}
     .CACHE{{$index}}_SIZE({{.}}),{{end}}
     .SLOT{{$index}}_AW({{ slot_addr_width . }}),
     .SLOT{{$index}}_DW({{ printf "%2d" .Data_width}})
 {{- end}}
-`ifdef JTFRAME_BA2_LEN
+`ifdef JTFRAME_BA{{$bank}}_LEN
 {{- range $index, $each:=.Buses}}
-    {{- if not .Rw}}
+{{- if not .Rw}}
     ,.SLOT{{$index}}_DOUBLE(1){{ end }}
 {{- end}}
 `endif
 {{- $is_rom := eq .MemType "rom" }}
 ) u_bank{{$bank}}(
+{{- $holdrst_placed := false }}
     .rst         ( rst        ),
     .clk         ( clk        ),
     {{ range $index2, $each:=.Buses }}{{if .Addr}}
@@ -319,8 +335,10 @@ jtframe_{{.MemType}}_{{len .Buses}}slot{{with lt 1 (len .Buses)}}s{{end}} #(
     {{- else }}
     .slot{{$index2}}_addr  ( {{.Name}}_addr  ),
     {{- end }}{{end}}
-    {{- if .Rw }}{{ if not $holded_slot }}
-    .hold_rst    ( hold_rst        ), {{ $holded_slot = true }}{{ $holded = true }}{{end}}
+    {{- if .Rw }}{{ if not $holdrst_placed }}
+    .hold_rst    ( {{if not .Dont_erase}} hold_rst
+        {{- $holdrst_placed = true  }}
+        {{- $assign_holdrst = false }} {{end}} ),{{end}}
     .slot{{$index2}}_wen   ( {{.Name}}_we    ),
     .slot{{$index2}}_din   ( {{if .Din}}{{.Din}}{{else}}{{.Name}}_din{{end}}   ),
     .slot{{$index2}}_wrmask( {{if .Dsn}}{{.Dsn}}{{else}}{{.Name}}_dsn{{end}}   ),
@@ -350,7 +368,7 @@ assign ba_wr[{{$bank}}] = 0;
 assign ba{{$bank}}_din  = 0;
 assign ba{{$bank}}_dsn  = 3;
 {{- end}}{{- end }}{{end}}
-{{ if not $holded }}assign hold_rst=0;{{end}}
+{{ if $assign_holdrst }}assign hold_rst=0;{{end}}
 {{ range $index, $each:=.Unused }}
 {{- with . -}}
 assign ba{{$index}}_addr = 0;
@@ -361,8 +379,27 @@ assign ba{{$index}}_din  = 0;
 {{ end -}}
 {{ end -}}
 
+`ifdef JTFRAME_PROM_START
+localparam JTFRAME_PROM_START=`JTFRAME_PROM_START;
+`endif
 {{ range $cnt, $bus:=.BRAM -}}
-{{- if $bus.Dual_port.Name }}
+{{- if $bus.Prom }}
+wire {{addr_range .}} {{$bus.Name}}_pa;
+assign {{$bus.Name}}_pa = raw_addr{{addr_range .}}-JTFRAME_PROM_START{{addr_range .}};
+jtframe_prom #(
+    .DW({{$bus.Data_width}}),
+    .AW({{$bus.Addr_width}}){{ if $bus.Sim_file }},
+    .SIMFILE("{{$bus.Name}}.bin"){{end}}
+) u_prom_{{$bus.Name}}(
+    .clk        ( clk           ),
+    .cen        ( 1'b1          ),
+    .data       ( raw_data{{data_range .}}),
+    .rd_addr    ( {{$bus.Addr}} ),
+    .wr_addr    ( {{$bus.Name}}_pa ),
+    .we         ( prom_we       ),
+    .q          ( {{$bus.Name}}_data )
+);
+{{- else if $bus.Dual_port.Name }}
 // Dual port BRAM for {{$bus.Name}} and {{$bus.Dual_port.Name}}
 jtframe_dual_ram{{ if eq $bus.Data_width 16 }}16{{end}} #(
     .AW({{$bus.Addr_width}}{{if eq $bus.Data_width 16}}-1{{end}}){{ if $bus.Sim_file }},
@@ -372,7 +409,7 @@ jtframe_dual_ram{{ if eq $bus.Data_width 16 }}16{{end}} #(
     // Port 0 - {{$bus.Name}}
     .clk0   ( clk ),
     .addr0  ( {{$bus.Addr}} ),{{ if $bus.Rw }}
-    .data0  ( {{$bus.Name}}_din  ),
+    .data0  ( {{$bus.Din}}  ),
     .we0    ( {{ if $bus.We }} {{$bus.We}}{{else}}{{$bus.Name}}_we{{end}} ), {{ else }}
     .data0  ( {{$bus.Data_width}}'h0 ),
     .we0    ( {{ if eq $bus.Data_width 16 }}2'd0{{else}}1'd0{{end}} ),{{end}}
@@ -380,9 +417,8 @@ jtframe_dual_ram{{ if eq $bus.Data_width 16 }}16{{end}} #(
     // Port 1 - {{$bus.Dual_port.Name}}
     .clk1   ( clk ),
     .data1  ( {{if $bus.Dual_port.Din}}{{$bus.Dual_port.Din}}{{else}}{{$bus.Dual_port.Name}}_dout{{end}} ),
-    .addr1  ( {{$bus.Dual_port.AddrFull}} ),{{ if $bus.Dual_port.Rw }}
-    .we1    ( {{if $bus.Dual_port.We}}{{$bus.Dual_port.We}}{{else}}{{$bus.Dual_port.Name}}_we{{end}}  ), {{ else }}
-    .we1    ( 2'd0 ),{{end}}
+    .addr1  ( {{$bus.Dual_port.AddrFull}} ),
+    .we1    ( {{if $bus.Dual_port.We}}{{$bus.Dual_port.We}}{{else}}{{$bus.Dual_port.Name}}_we{{end}}  ),
     .q1     ( {{if $bus.Dual_port.Dout}}{{$bus.Dual_port.Dout}}{{else}}{{$bus.Name}}2{{$bus.Dual_port.Name}}_data{{end}} )
 );{{else}}{{if $bus.ROM.Offset }}
 /* verilator tracing_off */
@@ -408,11 +444,12 @@ jtframe_bram_rom #(
 {{else}}
 // BRAM for {{$bus.Name}}
 jtframe_ram{{ if eq $bus.Data_width 16 }}16{{end}} #(
-    .AW({{$bus.Addr_width}}{{if eq $bus.Data_width 16}}-1{{end}}){{ if $bus.Sim_file }},
+    .AW({{ sub $bus.Addr_width (div $bus.Data_width 16)}}){{ if ne $bus.Data_width 16}},
+    .DW({{$bus.Data_width}}){{end}}{{- if $bus.Sim_file }},
     {{ if eq $bus.Data_width 16 }}.SIMFILE_LO("{{$bus.Name}}_lo.bin"),
     .SIMFILE_HI("{{$bus.Name}}_hi.bin"){{else}}.SIMFILE("{{$bus.Name}}.bin"){{end}}{{end}}
 ) u_bram_{{$bus.Name}}(
-    .clk    ( clk  ),{{ if eq $bus.Data_width 8 }}
+    .clk    ( clk  ),{{ if ne $bus.Data_width 16 }}
     .cen    ( 1'b1 ),{{end}}
     .addr   ( {{$bus.Addr}} ),
     .data   ( {{$bus.Din }} ),
@@ -422,14 +459,7 @@ jtframe_ram{{ if eq $bus.Data_width 16 }}16{{end}} #(
 {{ end }}{{end}}
 
 {{- if .Ioctl.Dump }}
-/* verilator tracing_off */
-wire [7:0] ioctl_aux;
-{{- range $k, $v := .Ioctl.Buses }}{{ if $v.Name}}
-wire [{{$v.DW}}-1:0] {{$v.Name}}_dimx;
-wire [  1:0] {{$v.Name}}_wemx;{{ if $v.Amx }}{{end}}
-wire [{{$v.AW}}-1:{{$v.AWl}}] {{$v.Amx}};{{end -}}
-{{end}}
-
+`ifndef JTFRAME_SIM_IODUMP /* verilator tracing_off */ `endif
 jtframe_ioctl_dump #(
     {{- $first := true}}
     {{- range $k, $v := .Ioctl.Buses }}
@@ -452,7 +482,11 @@ jtframe_ioctl_dump #(
     .ioctl_ram  ( ioctl_ram ),
     .ioctl_aux  ( ioctl_aux ),
     .ioctl_wr   ( ioctl_wr  ),
+`ifdef JTFRAME_IOCTL_RD
     .ioctl_din  ( ioctl_din ),
+`else
+    .ioctl_din  (           ),
+`endif
     .ioctl_dout ( ioctl_dout)
 );
 {{ end }}
@@ -469,7 +503,7 @@ jtframe_gated_cen #(.W({{.W}}),.NUM({{.Mul}}),.DEN({{.Div}}),.MFREQ({{.KHz}})) u
     .cen    ( { {{ .OutStr }} } ),
     .fave   (              ),
     .fworst (              )
-);
+); /* verilator tracing_off */
 {{ end }}{{ end }}{{ end }}
-
+{{ template "game_audio.v" .Audio }}
 endmodule

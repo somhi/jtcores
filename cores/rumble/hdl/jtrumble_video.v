@@ -64,7 +64,7 @@ module jtrumble_video#(
     output              VS,
     // Priority PROMs
     input       [7:0]   prog_addr,
-    input               prom_prior_we,
+    input               prom_prio,
     input       [3:0]   prom_din,
     // Palette RAM
     input               pal_cs,
@@ -248,6 +248,7 @@ u_obj (
     .LVBL_obj   ( LVBL_obj    ),
     .HINIT      ( HINIT       ),
     .flip       ( flip        ),
+    .alt        ( 1'b0        ),
     .V          ( V[7:0]      ),
     .H          ( H           ),
     // SDRAM interface
@@ -286,7 +287,7 @@ jtrumble_colmix u_colmix(
 
     // Priority PROM
     .prog_addr    ( prog_addr     ),
-    .prom_prio_we ( prom_prior_we ),
+    .prom_prio_we ( prom_prio     ),
     .prom_din     ( prom_din      ),
 
     // DEBUG

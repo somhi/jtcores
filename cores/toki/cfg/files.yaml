@@ -1,0 +1,34 @@
+toki:
+  - get:
+    - jttoki_game.v
+    - main.v
+    - video.v
+    - hvsync.v
+    - char.v
+    - tile.v
+    - sprite.v
+    - sound.v
+    - sei80bu.v
+    - z80_cs.v
+    - dual_ram_buffer.v
+    - dual_ram_buffer16.v
+jtframe:
+  - from: ram
+    get:
+      - jtframe_ram.v
+      - jtframe_ram16.v
+  - from: cpu
+    get:
+      - jtframe_virq.v
+      - jtframe_m68k.yaml
+      - jtframe_z80.yaml
+  - from: clocking
+    get:
+      - jtframe_cen48.v
+  - from: video
+    get:
+      - jtframe_credits.v
+jt6295:
+jtopl:
+  - get:
+    - jtopl2.yaml

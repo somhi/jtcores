@@ -16,9 +16,7 @@
     Version: 1.0
     Date: 22-3-2022 */
 
-module jtngp_obj #(
-    parameter PXLW=5
-)(
+module jtngp_obj(
     input             rst,
     input             clk,
 
@@ -42,19 +40,20 @@ module jtngp_obj #(
     input             chram_ok,
     // video output
     input             en,
-    output reg [PXLW-1:0] pxl
+    output reg [ 8:0] pxl
 );
 
 wire [ 1:0] we;
+wire [ 7:0] lut_addr;
 wire [ 6:0] scan_addr;
 reg  [ 5:0] scan_obj;
 reg  [ 2:0] scan_st;
-wire [15:0] scan_dout;
+wire [15:0] scan_dout, pre_din;
 reg         HSl;
 wire        Hinit;
-wire [PXLW-1:0] pre_pxl;
+wire [ 8:0] pre_pxl;
 
-assign we    = ~dsn & {2{obj_cs}};
+assign we    = ~dsn & {2{obj_cs|obj2_cs}};
 assign Hinit = ~HS & HSl;
 assign scan_addr = { scan_obj, scan_st[0] };
 
@@ -69,6 +68,13 @@ always @(posedge clk) if(we!=0) { chk_a, chk_d } <= { obj2_cs, cpu_addr, cpu_dou
 `endif
 // 256 bytes = 64 objects, extra 64 bytes in K2GE
 // the extra byte is mapped up in the BRAM
+`ifdef NGPC
+assign lut_addr = scan_st==4 ? { 3'b100, scan_obj[5:1] } : { 1'b0, scan_addr };
+`else
+assign lut_addr = { 1'b0, scan_addr };
+`endif
+assign cpu_din = obj2_cs ? {4'd0,pre_din[11:8],4'd0,pre_din[3:0]} : pre_din;
+
 jtframe_dual_ram16 #(
     .AW         (  8          ),
     .SIMFILE_LO ("obj_lo.bin" ),
@@ -80,12 +86,12 @@ jtframe_dual_ram16 #(
     .data0  ( cpu_dout  ),
     .addr0  ( { obj2_cs, cpu_addr } ),
     .we0    ( we        ),
-    .q0     ( cpu_din   ),
+    .q0     ( pre_din   ),
     // Port 1
     .clk1   ( clk       ),
     .data1  (           ),
     // ignoring the extra NGPC byte for now...
-    .addr1  ( { 1'b0, scan_addr } ),
+    .addr1  ( lut_addr  ),
     .we1    ( 2'b0      ),
     .q1     ( scan_dout )
 );
@@ -125,25 +131,36 @@ always @(posedge clk, posedge rst) begin
     if( rst ) begin
         scan_obj  <= 0;
         scan_st   <= 0;
-        HSl     <= 0;
+        HSl       <= 0;
         dr_start  <= 0;
         hlast     <= 0;
         vlast     <= 0;
         chram_addr<= 0;
+        dr_col    <= 0;
+        col       <= 0;
     end else if( cen ) begin
         HSl <= HS;
         dr_start <= 0;
         case( scan_st )
             2: begin
                 dr_attr_code <= scan_dout;
-                scan_st      <= 3;
+                scan_st      <= 4;
             end
-            3: begin
+            4: begin
+                col     <= scan_obj[0] ? scan_dout[8+:4] : scan_dout[0+:4];
+                scan_st <= 5;
+            end
+            5: begin
                 if( (inzone && !dr_busy) || !inzone ) begin
-                    chram_addr <= { dr_attr_code[8:0], vsub };
-                    dr_start <= inzone && !hidden;
-                    hlast    <= scan_dout[7:0] + (hchain ? hlast : hoffset );
-                    vlast    <= ypos;
+                    if( inzone && !hidden ) begin
+                        dr_start   <= 1;
+                        dr_col     <= col;
+                        chram_addr <= { dr_attr_code[8:0], vsub };
+                    end else begin
+                        dr_start <= 0;
+                    end
+                    hlast <= scan_dout[7:0] + (hchain ? hlast : hoffset );
+                    vlast <= ypos;
                     // if( !hidden && vrender<10) begin
                     //     $display("(%d) -- %d (%d) -> %d",vrender,ypos, ydelta, inzone);
                     // end
@@ -162,11 +179,12 @@ always @(posedge clk, posedge rst) begin
 end
 
 reg  [15:0] obj_data;
+reg  [ 3:0] col, dr_col;
 reg  [ 3:0] dr_cnt;
-wire [ 4:0] line_din;
+wire [ 8:0] line_din;
 reg         buff_we;
 
-assign line_din   = { prio, pal, hflip ? obj_data[1:0] : obj_data[15:14]};
+assign line_din   = { dr_col, prio, pal, hflip ? obj_data[1:0] : obj_data[15:14]};
 
 // drawing
 always @(posedge clk, posedge rst) begin
@@ -203,7 +221,7 @@ always @(posedge clk, posedge rst) begin
     end
 end
 
-jtframe_obj_buffer #(.DW(PXLW),.ALPHA(0),.ALPHAW(2),.KEEP_OLD(1))
+jtframe_obj_buffer #(.DW(9),.ALPHA(0),.ALPHAW(2),.KEEP_OLD(1))
 u_linebuffer(
     .clk    ( clk       ),
     .LHBL   ( ~HS       ),

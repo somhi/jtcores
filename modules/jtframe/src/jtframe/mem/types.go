@@ -1,4 +1,23 @@
+/*  This file is part of JTFRAME.
+    JTFRAME program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    JTFRAME program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with JTFRAME.  If not, see <http://www.gnu.org/licenses/>.
+
+    Author: Jose Tejada Gomez. Twitter: @topapate
+    Date: 4-1-2025 */
+
 package mem
+
+var Verbose bool
 
 type Args struct {
     Core     string
@@ -6,6 +25,7 @@ type Args struct {
     Verbose  bool
     Local    bool  // Dump to local folder, else dump to target folder
     Make_inc bool
+    Nodbg    bool
     // The memory selection (SDRAM, DDR, BRAM...) will be here
 }
 
@@ -21,15 +41,11 @@ type Bus interface {
     Is_nbits(n int) bool
 }
 
-type Selectable struct {
-    Target      string
-    Targets   []string
-    NoTarget    string
-    NoTargets []string
-}
-
 type SDRAMBus struct {
-    Selectable
+    // MacroEnabled
+    When    []string `yaml:"when"`
+    Unless  []string `yaml:"unless"`
+
     Name       string `yaml:"name"`
     Offset     string `yaml:"offset"`
     Addr       string `yaml:"addr"`
@@ -37,14 +53,28 @@ type SDRAMBus struct {
     Data_width int    `yaml:"data_width"`
     Cache_size int    `yaml:"cache_size"`
     Rw         bool   `yaml:"rw"`
+    Dont_erase bool   `yaml:"do_not_erase"`
     Dsn        string `yaml:"dsn"`  // optional name for dsn signal
     Din        string `yaml:"din"`  // optional name for din signal
     Cs         string `yaml:"cs"`
     Gfx        string `yaml:"gfx_sort"`
 }
 
+type BRAMBus_Ioctl struct {
+    // Instantiating MacroEnabled anonymously does not work
+    // with the YAML package, so When and Unless are duplicated here
+    When    []string `yaml:"when"`
+    Unless  []string `yaml:"unless"`
+    Save    bool `yaml:"save"`
+    Order   int  `yaml:"order"`
+    Restore bool `yaml:"restore"`
+}
+
 type BRAMBus struct {
-    Selectable
+    // MacroEnabled
+    When    []string `yaml:"when"`
+    Unless  []string `yaml:"unless"`
+
     Name       string `yaml:"name"`
     Addr_width int    `yaml:"addr_width"` // Width for counting all *bytes*
     Data_width int    `yaml:"data_width"`
@@ -54,11 +84,8 @@ type BRAMBus struct {
     Din        string `yaml:"din"`  // optional name for din signal
     Dout       string `yaml:"dout"` // optional name for dout signal
     Sim_file   bool   `yaml:"sim_file"`
-    Ioctl      struct {
-        Save bool `yaml:"save"`
-        Order int `yaml:"order"`
-        Restore bool `yaml:"restore"`
-    } `yaml:"ioctl"`
+    Prom       bool   `yaml:"prom"` // program contents after JTFRAME_PROM_START
+    Ioctl      BRAMBus_Ioctl `yaml:"ioctl"`
     Dual_port  struct {
         Name string `yaml:"name"`
         Addr string `yaml:"addr"` // may be needed if the RAM is 8 bits, but the dual port comes from a 16-bit address bus, so [...:1] should be added
@@ -75,7 +102,6 @@ type BRAMBus struct {
 }
 
 type SDRAMBank struct {
-    Region  string
     Buses []SDRAMBus `yaml:"buses"`
     // Precalculated values
     MemType string
@@ -93,7 +119,7 @@ type SDRAMCfg struct {
 }
 
 type Include struct {
-    Game string `yaml:"game"` // if not null, it will load from that game folder
+    Core string `yaml:"core"` // if not null, it will load from that game cfg folder
     File string `yaml:"file"` // if null, mem.yaml will be used
 }
 
@@ -138,6 +164,63 @@ type Ioctl struct {
     Buses [6]IoctlBus
 }
 
+type AudioRC struct {
+    R   string `yaml:"r"`
+    C   string `yaml:"c"`
+}
+
+type AudioCh struct {
+    Name       string `yaml:"name"`
+    Module     string `yaml:"module"`
+    Rsum       string `yaml:"rsum"`
+    Rout       string `yaml:"rout"` // output impedance
+    Pre        string `yaml:"pre"`  // pre-amplifier gain
+    Vpp        string `yaml:"vpp`   // peak-to-peak voltage range, 1.0=>5V
+    RC         []AudioRC `yaml:"rc"`
+    Fir        string `yaml:"fir"` // CSV file containing filter coefficients
+    DCrm       bool   `yaml:"dcrm"`
+    // These two are filled from Module, if the Module is present
+    Stereo     bool   `yaml:"stereo"`
+    Unsigned   bool   `yaml:"unsigned"`
+    Data_width int    `yaml:"data_width"`
+    Rc_en      bool   `yaml:"rc_en"`
+    // Derived from RC information
+    Firhex     string   // name for file with FIR filter coefficients in hexadecimal
+    Filters    int      // number of RC filters (each one is made of two poles)
+    Pole       string
+    rcen       string
+    Fcut       [2]int
+    Gain       string
+    gain       float64
+    rout       float64
+}
+
+type AudioPCB struct{
+    Machine     string `yaml:"machine"`
+    Machines    string `yaml:"machines"`
+    Rfb         string `yaml:"rfb"`     // feedback resistor of final opamp
+    Rsums     []string `yaml:"rsums"`   // summing resistor for each channel
+    Pres      []float64 `yaml:"pres`    // pre-gains
+    // Derived, not in YAML
+    Gaincfg     string
+}
+
+type Audio struct {
+    Mute    bool   `yaml:"mute"`
+    RC         AudioRC `yaml:"rc"`
+    Rsum    string `yaml:"rsum"`
+    Rsum_feedback_res bool `yaml:"rsum_feedback_res"`
+    Gain    float64 `yaml:"gain"` // additional global gain
+    Channels []AudioCh `yaml:"channels"`
+    // Fractional divider information to generate 192kHz clock
+    FracW,FracN,FracM int
+    PCB []AudioPCB `yaml:"pcb"`
+    // Derived information
+    GlobalPole string
+    GlobalFcut int
+    Stereo     bool
+}
+
 type MemConfig struct {
     Include  []Include   `yaml:"include"`
     Download DownloadCfg `yaml:"download"`
@@ -146,6 +229,7 @@ type MemConfig struct {
     Params   []Param     `yaml:"params"`
     Ports    []Port      `yaml:"ports"`
     Game     string      `yaml:"game"` // optional: Overrides using Core as the jt<core>_game module
+    Audio    Audio       `yaml:"audio"`
     // There will be other memory models supported here
     // Like DDR, BRAM, etc.
     // This part does not go in the YAML file
@@ -161,5 +245,9 @@ type MemConfig struct {
     Gfx8     string
     Gfx16    string
     Gfx8b0, Gfx16b0 int
-    Balut,Lutsh,Lutdw int
+    Balut,Lutsh int
+}
+
+type Optional interface{
+    Enabled() bool
 }

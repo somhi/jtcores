@@ -1,14 +1,26 @@
+/*  This file is part of JTFRAME.
+    JTFRAME program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    JTFRAME program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with JTFRAME.  If not, see <http://www.gnu.org/licenses/>.
+
+    Author: Jose Tejada Gomez. Twitter: @topapate
+    Date: 4-1-2025 */
+
 package mra
 
 import (
 	"bufio"
-	"bytes"
-	"encoding/json"
-	"encoding/xml"
 	"fmt"
-	"io/fs"
 	"log"
-	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,47 +31,82 @@ import (
 	"time"
 
 	"github.com/jotego/jtframe/betas"
-	"github.com/jotego/jtframe/def"
-	toml "github.com/komkom/toml"
+	"github.com/jotego/jtframe/macros"
+	"github.com/jotego/jtframe/common"
 )
 
-func (this *StartNode) add_length(pos int) {
-	if this.node != nil {
-		lenreg := pos - this.pos
-		if lenreg > 0 {
-			this.node.name = fmt.Sprintf("%s - length 0x%X (%d bits)", this.node.name, lenreg,
-				int(math.Ceil(math.Log2(float64(lenreg)))))
-		}
-	}
-}
-
-func Run(args Args) {
+func Convert(args Args) error {
 	pocket_clear()
 	defer close_allzip()
 	parse_args(&args)
-	mra_cfg := parse_toml(&args) // macros become part of args
-	if args.Verbose {
-		fmt.Println("Parsing", args.Xml_path)
-	}
-	ex := NewExtractor(args.Xml_path)
-	parent_names := make(map[string]string)
-	// Set the RBF Name if blank
-	// if mra_cfg.Rbf.Name == "" {
-	// 	mra_cfg.Rbf.Name = "jt" + args.Def_cfg.Core
-	// }
-	mra_cfg.rbf = "jt" + args.Def_cfg.Core
+	macros.MakeMacros(args.Core,args.Target)
+	mra_cfg, e := ParseTomlFile(args.Core); common.MustContext(e,"while parsing TOML file")
+	mra_cfg.rbf = "jt" + args.Core
 	// Set the platform name if blank
 	if mra_cfg.Global.Platform == "" {
-		mra_cfg.Global.Platform = "jt" + args.Def_cfg.Core
+		mra_cfg.Global.Platform = "jt" + args.Core
 	}
 	if args.Show_platform {
 		fmt.Printf("%s", mra_cfg.Global.Platform)
-		return
+		return nil
 	}
-	var data_queue []ParsedMachine
 	if !args.SkipPocket {
 		pocket_init(mra_cfg, args)
 	}
+	parsed_machines, parent_names := collect_machines( mra_cfg, args )
+	if len(mra_cfg.Parse.Sourcefile)==0 {
+		machine := &mra_cfg.Parse.Machine
+		parsed  := args.make_from_name(machine, mra_cfg)
+		parsed_machines = append(parsed_machines,parsed)
+	}
+	// Add explicit parents to the list
+	for _, p := range mra_cfg.Parse.Parents {
+		parent_names[p.Name] = p.Description
+	}
+	// Dump MRA is delayed for later so we get all the parent names collected
+	if Verbose || len(parsed_machines) == 0 {
+		log.Println("Total: ", len(parsed_machines), " games")
+	}
+	main_copied := args.SkipMRA
+	if !args.SkipMRA {
+		delete_core_mrafiles(macros.Get("CORENAME"),args.outdir)
+	}
+	valid_setnames := []string{}
+	var all_errors error
+	for _, d := range parsed_machines {
+		_, good := parent_names[d.machine.Cloneof]
+		if good || len(d.machine.Cloneof) == 0 {
+			bad_macros := d.validate_core_macros()
+			all_errors = common.JoinErrors( all_errors, bad_macros )
+			if args.PrintNames {
+				fmt.Println(d.machine.Description)
+			}
+			if !args.SkipMRA {
+				args.produce_mra_rom_nvram(d, parent_names, mra_cfg)
+				main_copied = main_copied || is_main(d.machine, mra_cfg)
+				valid_setnames = append( valid_setnames, d.machine.Name )
+			}
+			if !args.SkipPocket {
+				pocket_add(d.machine, mra_cfg, args, d.def_dipsw, d.coremod, d.mra_xml )
+			}
+		} else {
+			fmt.Printf("Skipping derivative '%s' as parent '%s' was not found\n",
+				d.machine.Name, d.machine.Cloneof)
+		}
+	}
+	dump_setnames( args.Core, valid_setnames )
+	if !main_copied {
+		log.Printf("Warning (%s): No single MRA was highlighted as the main one.\nSet it in the TOML file parse.main key\n", args.Core)
+	}
+	if !args.SkipPocket {
+		pocket_save()
+	}
+	return all_errors
+}
+
+func collect_machines(mra_cfg Mame2MRA, args Args) (machines []ParsedMachine, parent_names map[string]string) {
+	ex := NewExtractor(args.Xml_path)
+	parent_names = make(map[string]string)
 extra_loop:
 	for {
 		machine := ex.Extract(mra_cfg.Parse)
@@ -67,7 +114,7 @@ extra_loop:
 		if machine == nil {
 			break
 		}
-		if args.Verbose {
+		if Verbose {
 			fmt.Print("#####################\n#####################\nFound", machine.Name)
 			if machine.Cloneof != "" {
 				fmt.Printf(" (%s)", machine.Cloneof)
@@ -99,65 +146,71 @@ extra_loop:
 		}
 		mra_xml, def_dipsw, coremod := make_mra(machine, mra_cfg, args)
 		pm := ParsedMachine{machine, mra_xml, cloneof, def_dipsw, coremod}
-		data_queue = append(data_queue, pm)
+		machines = append(machines, pm)
 	}
-	// Add explicit parents to the list
-	for _, p := range mra_cfg.Parse.Parents {
-		parent_names[p.Name] = p.Description
-	}
-	// Dump MRA is delayed for later so we get all the parent names collected
-	if args.Verbose || len(data_queue) == 0 {
-		fmt.Println("Total: ", len(data_queue), " games")
-	}
-	main_copied := args.SkipMRA
-	old_deleted := false
-	valid_setnames := []string{}
-	for _, d := range data_queue {
-		_, good := parent_names[d.machine.Cloneof]
-		if good || len(d.machine.Cloneof) == 0 {
-			if args.PrintNames {
-				fmt.Println(d.machine.Description)
-			}
-			if !args.SkipMRA {
-				// Delete old MRA files
-				if !old_deleted {
-					filepath.WalkDir(args.outdir, func(path string, d fs.DirEntry, err error) error {
-						if err == nil {
-							if !d.IsDir() && strings.HasSuffix(path, ".mra") {
-								delete_old_mra(args, path)
-							}
-						}
-						return nil
-					})
-					old_deleted = true
-				}
-				if !args.SkipROM {
-					mra2rom(d.mra_xml,args.Verbose, true)
-				} else if args.Md5 {
-					mra2rom(d.mra_xml,args.Verbose, false)
-				}
-				// Do not merge dump_mra and the OR in the same line, or the compiler may skip
-				// calling dump_mra if main_copied is already set
-				dumped := dump_mra(args, d.machine, mra_cfg, d.mra_xml, parent_names)
-				main_copied = dumped || main_copied
-				valid_setnames = append( valid_setnames, d.machine.Name )
-			}
-			if !args.SkipPocket {
-				pocket_add(d.machine, mra_cfg, args, d.def_dipsw, d.coremod, d.mra_xml )
-			}
-		} else {
-			fmt.Printf("Skipping derivative '%s' as parent '%s' was not found\n",
-				d.machine.Name, d.machine.Cloneof)
-		}
-	}
-	dump_setnames( args.Def_cfg.Core, valid_setnames )
-	if !main_copied {
-		fmt.Printf("ERROR (%s): No single MRA was highlighted as the main one. Set it in the TOML file parse.main key\n", args.Def_cfg.Core)
+	return machines, parent_names
+}
+
+func (args *Args)make_from_name(machine *MachineXML, mra_cfg Mame2MRA) ParsedMachine {
+	if machine.Name=="" {
+		fmt.Println("Neither sourcefile nor explicit machine definitions in the [parse] section. Aborting.")
 		os.Exit(1)
 	}
-	if !args.SkipPocket {
-		pocket_save()
+	mra_xml, def_dipsw, coremod := make_mra(machine, mra_cfg, *args)
+	return ParsedMachine{
+		machine: machine,
+		mra_xml: mra_xml,
+		def_dipsw: def_dipsw,
+		coremod: coremod,
 	}
+}
+
+func (parsed *ParsedMachine)validate_core_macros() error {
+	corename := macros.Get("CORENAME")
+	context  := fmt.Sprintf("Game %s (in %s)",parsed.machine.Name,corename)
+	e1 := parsed.validate_vertical(context)
+	e2 := parsed.validate_buttons(context)
+	return common.JoinErrors(e1,e2)
+}
+
+func (parsed *ParsedMachine) validate_vertical(context string) error {
+	if parsed.is_vertical() && !macros.IsSet("JTFRAME_VERTICAL") {
+		e := fmt.Errorf("%s is vertical but JTFRAME_VERTICAL is not set",context)
+		return e
+	}
+	return nil
+}
+
+func (parsed *ParsedMachine) validate_buttons(context string) error {
+	if macros.GetInt("JTFRAME_BUTTONS") < parsed.machine.Input.Control[0].Buttons {
+		msg := fmt.Sprintf("%s uses %d buttons but JTFRAME_BUTTONS is set to %d",
+			context,
+			parsed.machine.Input.Control[0].Buttons,
+			macros.GetInt("JTFRAME_BUTTONS"))
+		if parsed.machine.Input.Control[0].Buttons<=6 {
+			e := fmt.Errorf(msg)
+			return e
+		} else {
+			fmt.Println("Warning:",msg)
+		}
+	}
+	return nil
+}
+
+func (parsed *ParsedMachine)is_vertical() bool {
+	return parsed.coremod&1==1
+}
+
+func (args *Args)produce_mra_rom_nvram( d ParsedMachine, parent_names map[string]string, mra_cfg Mame2MRA ) {
+	if !args.SkipROM || args.Md5 {
+		if !common.FileExists(args.Rom_path) {
+			fmt.Printf("ROM path %s is invalid. Provide a valid path to zip files in MAME format\nor call jtframe mra skipping .rom file generation.\n",args.Rom_path)
+			os.Exit(1)
+		}
+		mra2rom(d.mra_xml, !args.SkipROM, args.Rom_path)
+	}
+	save_nvram(d.mra_xml)
+	dump_mra(*args, d.machine, mra_cfg, d.mra_xml, parent_names)
 }
 
 func dump_setnames( corefolder string, sn []string ) {
@@ -177,7 +230,7 @@ func dump_setnames( corefolder string, sn []string ) {
 
 func skip_game(machine *MachineXML, mra_cfg Mame2MRA, args Args) bool {
 	if args.MainOnly && machine.Cloneof!="" && !slices.Contains( mra_cfg.Parse.Main_setnames, machine.Name ){
-		if args.Verbose {
+		if Verbose {
 			fmt.Println("Skipping ", machine.Description, "for it is not the main version of the game")
 		}
 		return true
@@ -185,30 +238,28 @@ func skip_game(machine *MachineXML, mra_cfg Mame2MRA, args Args) bool {
 	if mra_cfg.Parse.Skip.Bootlegs &&
 		strings.Index(
 			strings.ToLower(machine.Description), "bootleg") != -1 {
-		if args.Verbose {
+		if Verbose {
 			fmt.Println("Skipping ", machine.Description, "for it's a bootleg")
 		}
 		return true
 	}
 	for _, d := range mra_cfg.Parse.Skip.Descriptions {
 		if strings.Index(machine.Description, d) != -1 {
-			if args.Verbose {
+			if Verbose {
 				fmt.Println("Skipping ", machine.Description, "for its description")
 			}
 			return true
 		}
 	}
-	for _, each := range mra_cfg.Parse.Skip.Setnames {
-		if each == machine.Name {
-			if args.Verbose {
-				fmt.Println("Skipping ", machine.Description, "for matching setname")
-			}
-			return true
-		}
-	}
 	if m:=mra_cfg.Parse.Skip.Match(machine);m>1 {
-		if args.Verbose {
+		if Verbose {
 			fmt.Printf("Skipping %s for level %d matching\n", machine.Description, m)
+		}
+		return true
+	}
+	if m:=mra_cfg.Parse.Debug.Match(machine);m>1 && args.Nodbg {
+		if Verbose {
+			fmt.Printf("Skipping %s (debug phase) for level %d matching\n", machine.Description, m)
 		}
 		return true
 	}
@@ -217,7 +268,7 @@ func skip_game(machine *MachineXML, mra_cfg Mame2MRA, args Args) bool {
 	machine_ok := len(mra_cfg.Parse.Mustbe.Machines) == 0
 	for _, each := range mra_cfg.Parse.Mustbe.Machines {
 		if is_family(each, machine) {
-			if args.Verbose {
+			if Verbose {
 				fmt.Println("Parsing ", machine.Description, "for matching machine name")
 			}
 			machine_ok = true
@@ -239,29 +290,6 @@ func fix_filename(filename string) string {
 	return strings.ReplaceAll(x, "?", "x")
 }
 
-func delete_old_mra(args Args, path string) {
-	mradata, e := os.ReadFile(path)
-	if e != nil {
-		fmt.Println("Cannot read ", path)
-		os.Exit(1)
-	}
-	var testmra MRA
-	e = xml.Unmarshal(mradata, &testmra)
-	if e != nil {
-		fmt.Println("Cannot Unmarshal ", path, "\n\t", e)
-		os.Exit(1)
-	}
-	if strings.ToUpper(testmra.Rbf) == args.macros["CORENAME"] {
-		if e = os.Remove(path); e != nil {
-			fmt.Println("Cannot delete ", path)
-			os.Exit(1)
-		}
-		if args.Verbose {
-			fmt.Println("Deleted ", path)
-		}
-	}
-}
-
 func is_main( machine *MachineXML, mra_cfg Mame2MRA ) bool {
 	if machine.Cloneof=="" {
 		return true
@@ -274,13 +302,13 @@ func is_main( machine *MachineXML, mra_cfg Mame2MRA ) bool {
 	return false
 }
 
-func dump_mra(args Args, machine *MachineXML, mra_cfg Mame2MRA, mra_xml *XMLNode, parent_names map[string]string) bool {
+func dump_mra(args Args, machine *MachineXML, mra_cfg Mame2MRA, mra_xml *XMLNode, parent_names map[string]string) {
 	fname := args.outdir
 	game_name := strings.ReplaceAll(mra_xml.GetNode("name").text, ":", "")
 	game_name = strings.ReplaceAll(game_name, "/", "-")
 	// Create the output directory
 	if args.outdir != "." && args.outdir != "" {
-		if args.Verbose {
+		if Verbose {
 			fmt.Println("Creating folder ", args.outdir)
 		}
 		err := os.MkdirAll(args.outdir, 0777)
@@ -316,7 +344,6 @@ func dump_mra(args Args, machine *MachineXML, mra_cfg Mame2MRA, mra_xml *XMLNode
 	b.WriteString(mra_xml.Dump())
 	b.WriteString("\n")
 	os.WriteFile(fname, []byte(b.String()), 0666)
-	return main_mra
 }
 
 func mra_disclaimer(machine *MachineXML, year string) string {
@@ -392,39 +419,6 @@ func guess_world_region(name string) string {
 }
 
 func set_rbfname(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) *XMLNode {
-// 	name := cfg.Rbf.Name
-// check_devs:
-// 	for _, cfg_dev := range cfg.Rbf.Dev {
-// 		for _, mac_dev := range machine.Devices {
-// 			if cfg_dev.Dev == mac_dev.Name {
-// 				name = cfg_dev.Rbf
-// 				break check_devs
-// 			}
-// 		}
-// 	}
-// 	// Machine definitions override DEV definitions
-// 	for _, each := range cfg.Rbf.Machines {
-// 		if each.Machine == "" {
-// 			continue
-// 		}
-// 		if machine.Cloneof == each.Machine || machine.Name == each.Machine {
-// 			name = each.Rbf
-// 			break
-// 		}
-// 	}
-// 	// setname definitions have the highest priority
-// 	for _, each := range cfg.Rbf.Machines {
-// 		if each.Setname == "" {
-// 			continue
-// 		}
-// 		if machine.Name == each.Setname {
-// 			name = each.Rbf
-// 			break
-// 		}
-// 	}
-// 	if name == "" {
-// 		fmt.Printf("\tWarning: no RBF name defined\n")
-// 	}
 	return root.AddNode("rbf", cfg.rbf)
 }
 
@@ -437,14 +431,34 @@ func mra_name(machine *MachineXML, cfg Mame2MRA) string {
 	return machine.Description
 }
 
+func notEmpty( a, b string ) string {
+	if a!="" {
+		return a
+	} else {
+		return b
+	}
+}
+
+func slice2csv( ss []string ) string {
+	csv := ""
+	for k, token := range ss {
+		if k > 0 {
+			csv += ","
+		}
+		csv += token
+	}
+	return csv
+}
+
 // Do not pass the macros to make_mra, but instead modifiy the configuration
 // based on the macros in parse_toml
 func make_mra(machine *MachineXML, cfg Mame2MRA, args Args) (*XMLNode, string, int) {
 	root := XMLNode{name: "misterromdescription"}
-	n := root.AddNode("about").AddAttr("author", "jotego")
-	n.AddAttr("webpage", "https://patreon.com/jotego")
-	n.AddAttr("source", "https://github.com/jotego")
-	n.AddAttr("twitter", "@topapate")
+	n := root.AddNode("about")
+	n.AddAttr("author",  notEmpty(slice2csv(cfg.Global.Author), "jotego"))
+	n.AddAttr("webpage", notEmpty(cfg.Global.Webpage,   "https://patreon.com/jotego"))
+	n.AddAttr("twitter", notEmpty(cfg.Global.Twitter,   "@topapate"))
+	n.AddAttr("source", "https://github.com/jotego/jtcores")
 	root.AddNode("name", mra_name(machine, cfg)) // machine.Description)
 	root.AddNode("setname", machine.Name)
 	corename := set_rbfname(&root, machine, cfg, args).text[2:] // corename = RBF, skipping the JT part
@@ -473,21 +487,13 @@ func make_mra(machine *MachineXML, cfg Mame2MRA, args Args) (*XMLNode, string, i
 	for _, t := range info {
 		root.AddNode(t.Tag, t.Value)
 	}
-	// MRA author
-	if len(cfg.Global.Mraauthor) > 0 {
-		authors := ""
-		for k, a := range cfg.Global.Mraauthor {
-			if k > 0 {
-				authors += ","
-			}
-			authors += a
-		}
-		root.AddNode("mraauthor", authors)
-	}
 	// ROM load
-	make_ROM(&root, machine, cfg, args)
+	if e:=make_ROM(&root, machine, cfg, args); e!=nil {
+		fmt.Println(e)
+		os.Exit(1)
+	}
 	// Beta
-	if betas.All.IsBetaFor(corename,"mister") {
+	if betas.IsBetaFor(corename,"mister") {
 		n := root.AddNode("rom").AddAttr("index", "17")
 		// MiSTer makes a mess of md5 calculations, so I am not using that
 		n.AddAttr("zip", "jtbeta.zip").AddAttr("md5", "None").AddAttr("asm_md5", betas.Md5sum)
@@ -515,7 +521,7 @@ func make_mra(machine *MachineXML, cfg Mame2MRA, args Args) (*XMLNode, string, i
 			}
 		}
 		if filename == "" {
-			filename = args.Def_cfg.Core + ".s"
+			filename = args.Core + ".s"
 		}
 		asmhex := picoasm(filename, cfg, args) // the filename is ignored for betas
 		if asmhex != nil && len(asmhex) > 0 && !skip {
@@ -534,39 +540,7 @@ func make_mra(machine *MachineXML, cfg Mame2MRA, args Args) (*XMLNode, string, i
 			}
 		}
 	}
-	// NVRAM
-	if cfg.ROM.Nvram.length != 0 {
-		add_nvram := len(cfg.ROM.Nvram.Machines) == 0
-		if !add_nvram {
-			for _, each := range cfg.ROM.Nvram.Machines {
-				if machine.Name == each {
-					add_nvram = true
-					break
-				}
-			}
-		}
-		if add_nvram {
-			var raw *RawData
-			for k, each := range cfg.ROM.Nvram.Defaults {
-				if each.Machine == "" && each.Setname == "" && raw == nil {
-					raw = &cfg.ROM.Nvram.Defaults[k]
-				}
-				if each.Match(machine)>0 {
-					raw = &cfg.ROM.Nvram.Defaults[k]
-				}
-				if each.Setname == machine.Name {
-					raw = &cfg.ROM.Nvram.Defaults[k]
-					break
-				}
-			}
-			if raw != nil {
-				rawbytes := rawdata2bytes(raw.Data)
-				root.AddNode("rom").AddAttr("index", "2").SetText("\n" + hexdump(rawbytes, 16))
-			}
-			n := root.AddNode("nvram").AddAttr("index", "2")
-			n.AddIntAttr("size", cfg.ROM.Nvram.length)
-		}
-	}
+	make_nvram(&root,machine,cfg,args.Core)
 	// coreMOD
 	coremod := make_coreMOD(&root, machine, cfg)
 	// DIP switches
@@ -597,7 +571,7 @@ func make_buttons(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
 		m := b.Match(machine)
 		if (m==1 && !button_set) || m==2 {
 			button_def = b.Names
-			if args.Verbose {
+			if Verbose {
 				fmt.Printf("Buttons set to %s for %s\n", b.Names, machine.Name)
 			}
 			button_set = true
@@ -625,7 +599,7 @@ func make_buttons(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
 		if buttons[k] != "-" {
 			count++
 			if count > 6 {
-				fmt.Println("Warning: cannot support more than 6 buttons")
+				log.Println("Warning: cannot support more than 6 buttons")
 				break
 			}
 		}
@@ -641,35 +615,10 @@ func make_buttons(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) {
 	n.AddIntAttr("count", count)
 }
 
-func make_coreMOD(root *XMLNode, machine *MachineXML, cfg Mame2MRA) int {
-	coremod := 0
-	if machine.Display.Rotate!=0 && machine.Display.Rotate!=180 {
-		root.AddNode("Vertical game").comment = true
-		coremod |= 1
-		if machine.Display.Rotate != 90 {
-			coremod |= 4
-		}
-	}
-	for _, each := range cfg.Buttons.Dial {
-		if each.Match(machine)>0 {
-			if each.Raw {
-				coremod |= 1<<3
-			}
-			if each.Reverse {
-				coremod |= 1<<4
-			}
-		}
-	}
-	n := root.AddNode("rom").AddAttr("index", "1")
-	n = n.AddNode("part")
-	n.SetText(fmt.Sprintf("%02X", coremod))
-	return coremod
-}
-
 func make_devROM(root *XMLNode, machine *MachineXML, cfg Mame2MRA, pos *int) {
 	for _, dev := range machine.Devices {
 		if strings.Contains(dev.Name, "fd1089") {
-			reg_cfg := find_region_cfg(machine, "fd1089", cfg, true)
+			reg_cfg := find_region_cfg(machine, "fd1089", cfg)
 			if delta := fill_upto(pos, reg_cfg.start, root); delta < 0 {
 				fmt.Printf(
 					"\tstart offset overcome by 0x%X while adding FD1089 LUT\n", -delta)
@@ -699,19 +648,6 @@ func is_split(reg string, machine *MachineXML, cfg Mame2MRA) (offset, min_len in
 	return offset, min_len
 }
 
-func sdram_bank_comment(root *XMLNode, pos int, macros map[string]string) {
-	for k, v := range macros { // []string{"JTFRAME_BA1_START","JTFRAME_BA2_START","JTFRAME_BA3_START"} {
-		start, _ := strconv.ParseInt(v, 0, 32)
-		if start == 0 {
-			continue
-		}
-		// add the comment only once
-		if int(start) == pos && root.FindMatch(func( n*XMLNode) bool { return k == n.name })==nil {
-			root.AddNode(k).comment = true
-		}
-	}
-}
-
 type flag_info struct {
 	pargs *Args
 }
@@ -738,89 +674,6 @@ func (p *flag_info) Set(a string) error {
 	}
 	p.pargs.Info = append(p.pargs.Info, i)
 	return nil
-}
-
-func parse_toml(args *Args) (mra_cfg Mame2MRA) {
-	macros := def.Make_macros(args.Def_cfg)
-	// fmt.Println(macros)
-	// Replaces words starting with $ with the corresponding macro
-	// and translates the hexadecimal 0x to 'h where needed
-	// This functionality is tagged for deletion in favour of
-	// using macro names as strings in the TOML, so the TOML
-	// syntax does not get broken
-	str := def.Replace_Macros(args.Toml_path, macros)
-	str = Replace_Hex(str)
-	if args.Verbose {
-		fmt.Println("TOML file after replacing the macros:")
-		fmt.Println(str)
-	}
-
-	json_enc := toml.New(bytes.NewBufferString(str))
-	dec := json.NewDecoder(json_enc)
-
-	err := dec.Decode(&mra_cfg)
-	if err != nil {
-		fmt.Println("jtframe mra: problem while parsing TOML file after JSON transformation:\n\t", err)
-		fmt.Println(json_enc)
-		os.Exit(1)
-	}
-	mra_cfg.Dipsw.base, _ = strconv.Atoi(macros["JTFRAME_DIPBASE"])
-	// Set the number of buttons to the definition in the macros.def
-	if mra_cfg.Buttons.Core == 0 {
-		mra_cfg.Buttons.Core, _ = strconv.Atoi(macros["JTFRAME_BUTTONS"])
-	}
-	if mra_cfg.Header.Len > 0 {
-		fmt.Println(`The use of header.len in the TOML file is deprecated.
-Set JTFRAME_HEADER=length in macros.def instead`)
-	}
-	aux, _ := strconv.ParseInt(macros["JTFRAME_HEADER"], 0, 32)
-	mra_cfg.Header.Len = int(aux)
-	if len(mra_cfg.Dipsw.Delete) == 0 {
-		mra_cfg.Dipsw.Delete = []DIPswDelete{
-			{ Names: []string{"Unused", "Unknown"} },
-		}
-	}
-	// Add the NVRAM section if it was in the .def file
-	if macros["JTFRAME_IOCTL_RD"] != "" {
-		aux, err := strconv.ParseInt(macros["JTFRAME_IOCTL_RD"], 0, 32)
-		mra_cfg.ROM.Nvram.length = int(aux)
-		if err != nil {
-			fmt.Println("JTFRAME_IOCTL_RD was ill defined")
-			fmt.Println(err)
-		}
-	}
-	// For each ROM region, set the no_offset flag if a
-	// sorting option was selected
-	// And translate the Start macro to the private start integer value
-	for k := 0; k < len(mra_cfg.ROM.Regions); k++ {
-		this := &mra_cfg.ROM.Regions[k]
-		if this.Start != "" {
-			start_str, good1 := macros[this.Start]
-			if !good1 {
-				fmt.Printf("ERROR: ROM region %s uses undefined macro %s in core %s\n", this.Name, this.Start, args.Def_cfg.Core)
-				os.Exit(1)
-			}
-			aux, err := strconv.ParseInt(start_str, 0, 64)
-			if err != nil {
-				fmt.Println("ERROR: Macro %s is used as a ROM start, but its value (%s) is not a number\n",
-					this.Start, start_str)
-				os.Exit(1)
-			}
-			this.start = int(aux)
-			if args.Verbose {
-				fmt.Printf("Start in .ROM set to %X for region %s",this.start, this.Name)
-				if this.Rename!="" { fmt.Printf(" (%s)",this.Rename)}
-				fmt.Println()
-			}
-		}
-		if  this.Sort_even ||
-			this.Singleton || len(this.Ext_sort) > 0 ||
-			len(this.Name_sort) > 0 || len(this.Sequence) > 0 {
-			this.No_offset = true
-		}
-	}
-	args.macros = macros
-	return mra_cfg
 }
 
 func Replace_Hex(orig string) string {
@@ -870,13 +723,13 @@ var fd1089_bin = [256]byte{
 
 func parse_args(args *Args) {
 	cores := os.Getenv("CORES")
-	if args.Toml_path == "" && args.Def_cfg.Core != "" {
+	if args.Toml_path == "" && args.Core != "" {
 		if len(cores) == 0 {
 			log.Fatal("JTFILES: environment variable CORES is not defined")
 		}
-		args.Toml_path = filepath.Join(cores, args.Def_cfg.Core, "cfg", "mame2mra.toml")
+		args.Toml_path = TomlPath(args.Core)
 	}
-	if args.Verbose {
+	if Verbose {
 		fmt.Println("Parsing ", args.Toml_path)
 	}
 	release_dir := filepath.Join(os.Getenv("JTROOT"), "release")
@@ -890,5 +743,5 @@ func parse_args(args *Args) {
 	args.outdir = filepath.Join(release_dir, "mra")
 	args.altdir = filepath.Join(args.outdir, "_alternatives")
 	args.pocketdir = filepath.Join(release_dir, "pocket", "raw")
-	args.firmware_dir = filepath.Join(cores, args.Def_cfg.Core, "firmware")
+	args.firmware_dir = filepath.Join(cores, args.Core, "firmware")
 }

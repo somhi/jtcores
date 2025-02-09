@@ -30,7 +30,7 @@ wire [ 7:0] st_main, st_video, st_snd;
 wire [15:0] scr_bank;
 wire [19:1] cpu_addr;
 wire [ 1:0] prio;
-reg  [ 7:0] debug_mux, ioctl_mux;
+reg  [ 7:0] debug_mux;
 wire        oram_wex;
 // reg  [ 2:0] game_id;
 
@@ -40,6 +40,10 @@ assign ram_addr   = main_addr[13:1];
 assign ram_we     = cpu_we;
 assign vram_addr[12:1] = main_addr[12:1];
 assign oram_we = {2{oram_wex}};
+
+`ifdef JTFRAME_IOCTL_RD
+reg  [ 7:0] ioctl_mux;
+
 assign ioctl_din = ioctl_mux;
 
 always @(posedge clk) begin
@@ -58,6 +62,7 @@ always @(posedge clk) begin
         default: ioctl_mux <= 0;
     endcase
 end
+`endif
 
 always @(posedge clk) begin
     case( debug_bus[7:6] )
@@ -97,8 +102,8 @@ jtfround_main u_main(
     .obj_data       ( lyro_data     ),
     .obj_ok         ( lyro_ok       ),
     // cabinet I/O
-    .cab_1p         ( cab_1p        ),
-    .coin           ( coin          ),
+    .cab_1p         ( cab_1p[1:0]   ),
+    .coin           ( coin[1:0]     ),
     .joystick1      ( joystick1     ),
     .joystick2      ( joystick2     ),
     .service        ( service       ),
@@ -218,12 +223,7 @@ jtfround_video u_video (
 );
 
 /* verilator tracing_off */
-jttmnt_sound #( // -1.5dB compared to MIA, same balance
-    .MONO_FM    ( 8'h18 ),
-    .MONO_PCM   ( 8'h06 ),
-    .MONO_UPD   ( 8'h0C ),
-    .MONO_TTL   ( 8'h00 )
-) u_sound(
+jttmnt_sound u_sound(
     .rst        ( rst           ),
     .clk        ( clk           ),
     .cen_fm     ( cen_fm        ),
@@ -274,10 +274,13 @@ jttmnt_sound #( // -1.5dB compared to MIA, same balance
     .title_cs   (               ),
     .title_ok   ( 1'b1          ),
     // Sound output
-    .snd_left   ( snd           ),
-    .snd_right  (               ),
-    .sample     ( sample        ),
-    .peak       ( game_led      ),
+    .fm_l       ( fm_l          ),
+    .fm_r       ( fm_r          ),
+    .pcm        ( pcm           ),
+    .upd        ( upd           ),
+    .k60_l      (               ),
+    .k60_r      (               ),
+    .title      (               ),
     // Debug
     .debug_bus  ( debug_bus     ),
     .st_dout    ( st_snd        )

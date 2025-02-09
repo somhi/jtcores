@@ -1,10 +1,9 @@
-[all]
+[*]
 include ../../kicker/cfg/common.def
 
 CORENAME=JTTRACK
 
 JTFRAME_BUTTONS=3
-JTFRAME_4PLAYERS
 
 SND_START=0x10000
 SCR_START=0x12000

@@ -28,6 +28,7 @@
 // The shadow bit must be the MSB
 
 module jtframe_objdraw_gate #( parameter
+    AW    =  9,    // Buffer with
     CW    = 12,    // code width
     PW    =  8,    // pixel width (lower four bits come from ROM)
     ZW    =  6,    // zoom step width - see description in jtframe_draw
@@ -38,10 +39,13 @@ module jtframe_objdraw_gate #( parameter
                    // set to 1 if hdump jumps from  FF to 180  (like KIWI)
                    // set to 2 if hdump jumps from 1FF to  80  (like JTTORA)
                    // See note below about hdump fix for HJUMP==0
+    HFIX  =  1,    // Fixes some problems, but it may create others. Turn it off if objects are not rendered on part of the screen
     LATCH =  0,    // If set, latches code, xpos, ysub, hflip, vflip and pal when draw is set and busy is low
     FLIP_OFFSET=0, // Added to ~hdump when flip==1 and HJUMP==0
     SHADOW     =0, // 1 for shadows
+    SW         =1, // Shadow bits width (Use with SHADOW==1)
     KEEP_OLD   =0, // new writes do not overwrite old ones (reverse priority)
+    SHADOW_PEN = ALPHA, // Value used by only-shadow sprites. Use independently from SHADOW
     // object line buffer
     ALPHA      =0,
     PACKED     =0  // 0 if rom_data is { plane3, plane2, plane1, plane0 }, 8 bits each
@@ -52,13 +56,15 @@ module jtframe_objdraw_gate #( parameter
     input               pxl_cen,
     input               hs,
     input               flip,
-    input        [ 8:0] hdump,
+    input    [AW-1:0]   hdump,
 
     input               draw,
     output              busy,
     input    [CW-1:0]   code,
-    input      [ 8:0]   xpos,
+    input    [AW-1:0]   xpos,
     input      [ 3:0]   ysub,
+    // Truncate to first 8 or 4 bits
+    input      [ 1:0]   trunc, // 00=no trunc, 10 = 8 pixels, 11 = 4 pixels
     // optional zoom, keep at zero for no zoom
     input    [ZW-1:0]   hzoom,
     input               hz_keep, // set at 1 for the first tile
@@ -72,16 +78,16 @@ module jtframe_objdraw_gate #( parameter
     input               rom_ok,
     input      [31:0]   rom_data,
 
-    output     [PW-1:0] buf_pred,   // line buffer data can be altered on
-    input      [PW-1:0] buf_din,    // the fed back through these ports
+    output     [PW-1:0] buf_pred,   // line buffer data to be altered and
+    input      [PW-1:0] buf_din,    // then fed back through these ports
 
     output     [PW-1:0] pxl
 );
 
-reg     [8:0] aeff, hdf, hdfix;
+reg  [AW-1:0] aeff, hdf, hdfix;
 
 reg  [CW-1:0] dr_code;
-reg    [ 8:0] dr_xpos;
+reg  [AW-1:0] dr_xpos;
 reg    [ 3:0] dr_ysub;
 reg           dr_hflip, dr_vflip, dr_draw;
 reg  [PW-5:0] dr_pal;
@@ -89,7 +95,7 @@ reg  [PW-5:0] dr_pal;
 reg  [ZW-1:0] dr_hzoom;
 reg           dr_hz_keep;
 
-wire    [8:0] buf_addr;
+wire [AW-1:0] buf_addr;
 wire          buf_we;
 wire   [31:0] rom_sorted;
 
@@ -134,14 +140,16 @@ generate
 endgenerate
 
 always @* begin
-    case( HJUMP )
+    aeff = 0;
+    hdf  = 0;
+    case( HJUMP ) //1 and 2 only work using 9 bits
         1: begin
-            aeff = { buf_addr[8], buf_addr[8] ^ buf_addr[7], buf_addr[6:0] }; // 100~17F is translated to 180~1FF, and 180~1FF to 100~17F
-            hdf  = hdump ^ { 1'b0, flip&~hdump[8], {7{flip}} };
+            aeff[8:0] = { buf_addr[8], buf_addr[8] ^ buf_addr[7], buf_addr[6:0] }; // 100~17F is translated to 180~1FF, and 180~1FF to 100~17F
+            hdf  = hdump ^ { {AW-8{1'b0}}, flip&~hdump[8], {7{flip}} };
         end
         2: begin
-            aeff = { buf_addr[8],~buf_addr[8] | buf_addr[7], buf_addr[6:0] }; //  00~ 7F is translated to  80~ FF
-            hdf  = hdump ^ { 1'b0, flip&hdump[8], {7{flip}} }; // untested line
+            aeff[8:0] = { buf_addr[8],~buf_addr[8] | buf_addr[7], buf_addr[6:0] }; //  00~ 7F is translated to  80~ FF
+            hdf  = hdump ^ { {AW-8{1'b0}}, flip&hdump[8], {7{flip}} }; // untested line
         end
         default: begin
             aeff = buf_addr;
@@ -150,23 +158,31 @@ always @* begin
     endcase
 end
 
-// For HJUMP==0, it is common that the readout counter wraps around a bit before
-// horizontal blank. That may read pixel data written to the start of the blank
-// region instead of continuing the regular count. An example of this is
-// scontra's final game boss. As it appears from the top (left unrotated) side
-// of the screen, part of it is visible at the bottom (right).
-// Instead of configuring this per game using macros, I have opted for detecting
-// the situation generally and fixing it. The readout count will keep increasing
-// until HS is hit.
-always @(posedge clk, posedge rst) begin
-    if( rst ) begin
-        hdfix <= 0;
-    end else if(pxl_cen) begin
-        hdfix <= ( hdump > hdfix || hs ) ? hdump+9'd1 : hdfix+9'd1;
+generate
+    if(HJUMP==0 && HFIX==1) begin
+        // For HJUMP==0, it is common that the readout counter wraps around a bit before
+        // horizontal blank. That may read pixel data written to the start of the blank
+        // region instead of continuing the regular count. An example of this is
+        // scontra's final game boss. As it appears from the top (left unrotated) side
+        // of the screen, part of it is visible at the bottom (right).
+        // Instead of configuring this per game using macros, I have opted for detecting
+        // the situation generally and fixing it. The readout count will keep increasing
+        // until HS is hit.
+        always @(posedge clk, posedge rst) begin
+            if( rst ) begin
+                hdfix <= 0;
+            end else if(pxl_cen) begin
+                hdfix <= ( hdump > hdfix || hs ) ? hdump+9'd1 : hdfix+9'd1;
+            end
+        end
+    end else begin
+        always @* hdfix=hdump;
     end
-end
+endgenerate
+
 
 jtframe_draw #(
+    .AW      ( AW       ),
     .CW      ( CW       ),
     .PW      ( PW       ),
     .ZW      ( ZW       ),
@@ -182,6 +198,7 @@ jtframe_draw #(
     .code       ( dr_code   ),
     .xpos       ( dr_xpos   ),
     .ysub       ( dr_ysub   ),
+    .trunc      ( trunc     ),
     .hz_keep    ( dr_hz_keep),
     .hzoom      ( dr_hzoom  ),
     .hflip      ( dr_hflip  ),
@@ -198,9 +215,12 @@ jtframe_draw #(
 );
 
 jtframe_obj_buffer #(
+    .AW         ( AW          ),
     .DW         ( PW          ),
     .ALPHA      ( ALPHA       ),
+    .SW         ( SW          ),
     .SHADOW     ( SHADOW      ),
+    .SHADOW_PEN ( SHADOW_PEN  ),
     .KEEP_OLD   ( KEEP_OLD    )
 ) u_linebuf(
     .clk        ( clk       ),

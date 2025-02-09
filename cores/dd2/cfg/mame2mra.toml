@@ -1,5 +1,5 @@
 [global]
-mraauthor=["jotego"]
+author=["jotego"]
 platform="jtdd2"
 
 [parse]
@@ -26,6 +26,11 @@ skip.setnames=[
     "toffy",
     "stoffy",
     "stoffyu",
+]
+
+[Audio]
+volume = [
+    { machine="ddragon2", value=0xFF },
 ]
 
 [buttons]

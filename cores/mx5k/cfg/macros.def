@@ -1,4 +1,4 @@
-[all]
+[*]
 CORENAME=JTMX5K
 JTFRAME_VERTICAL
 JTFRAME_CLK24
@@ -12,26 +12,25 @@ JTFRAME_CREDITS
 # 4 pages, automatically requires 8 pages
 # in memory
 JTFRAME_CREDITS_PAGES=5
-JTFRAME_SDRAM_BANKS
 
 # ROM offsets
 SND_START=0x10000
 GFX_START=0x20000
 PCM_START=0xA0000
 
-JTFRAME_OSD_VOL
-JTFRAME_DIPBASE=8
+[mist|sidi|mist_*]
+# OSD credits cannot be used when
+# DIP base is less than 13
+JTFRAME_OSD_NOCREDITS
 
-[mist|sidi|demist_*|mist_*]
+[demist_*]
+JTFRAME_DIPBASE=8
 # OSD credits cannot be used when
 # DIP base is less than 13
 JTFRAME_OSD_NOCREDITS
 
 [mister]
-JTFRAME_OSD_NOLOAD
 JTFRAME_ARX=4
 JTFRAME_ARY=3
 JTFRAME_NOHQ2X
 JTFRAME_CHEAT
-[pocket]
-JTFRAME_SKIP

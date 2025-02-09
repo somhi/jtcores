@@ -1,3 +1,20 @@
+/*  This file is part of JTCORES.
+    JTFRAME program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    JTFRAME program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with JTFRAME.  If not, see <http://www.gnu.org/licenses/>.
+
+    Author: Jose Tejada Gomez. Twitter: @topapate
+    Date: 4-1-2025 */
+
 package vcd
 
 import (
@@ -9,9 +26,8 @@ import (
 // Creates a hex file to be used in
 // verilog and the accompanying verilog file
 // to read it
-func (this *LnFile) DumpHex(ss vcdData, fname string) {
-	f, err := os.Create(fname + ".bin")
-	must(err)
+func (this *LnFile) DumpHex(ss vcdData, fname string) (e error) {
+	f, e := os.Create(fname + ".bin"); if e!=nil { return e }
 	lines := 0
 	tbw := 64
 	outputs := make([]*VCDSignal, len(ss))
@@ -71,11 +87,11 @@ endmodule
 		Lines:   lines,
 		Outputs: outputs,
 	}
-	f, err = os.Create(fname + ".v")
-	must(err)
+	f, e = os.Create(fname + ".v")
 	defer f.Close()
-	to := template.Must(template.New(fname).Parse(t))
-	to.Execute(f, info)
+	if e!=nil { return e }
+	to, e := template.New(fname).Parse(t); if e!=nil { return e }
+	return to.Execute(f, info)
 }
 
 func must(e error) {

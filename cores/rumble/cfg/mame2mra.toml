@@ -1,8 +1,13 @@
 [global]
-mraauthor=["jotego"]
+author=["jotego"]
 
 [parse]
 sourcefile=[ "srumbler.cpp" ]
+
+[Audio]
+volume = [
+    { machine="srumbler", value=0x1C },
+]
 
 [buttons]
 names=[
@@ -13,8 +18,8 @@ names=[
 info = """ Header to identify the game
 """
 data = [
-    { setname="srumbler",  offset=0, data="00" }, # 00
-    { setnames=["srumbler2","srumbler3","rushcrsh"], offset=0, data="01" }, # 10
+    { setname="srumbler",  offset=0, data="01" },
+    { setnames=["srumbler2","srumbler3","rushcrsh"], offset=0, data="00" },
 ]
 
 [dipsw]

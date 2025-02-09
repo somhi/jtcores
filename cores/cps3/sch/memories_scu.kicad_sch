@@ -9,7 +9,7 @@
     (date "14/10/22")
     (rev "José Tejada G.")
     (company "JOTEGO")
-    (comment 1 "E.Triana")
+    (comment 1 "JOTEGO")
     (comment 2 "14/10/22-30/01/23")
   )
 
@@ -2646,7 +2646,7 @@
     (effects (font (size 1.27 1.27)) (justify left bottom))
     (uuid 39df2ca1-0a94-45c1-a186-9bbf8097542b)
   )
-  (text "NOT MOUNTED" (at 165.1 31.75 0)
+  (text "NOT POPULATED" (at 165.1 31.75 0)
     (effects (font (size 1.27 1.27)) (justify left bottom))
     (uuid 47b3e682-da69-412b-8cda-91d670283854)
   )

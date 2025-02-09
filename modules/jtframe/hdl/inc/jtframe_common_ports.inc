@@ -3,18 +3,11 @@
 // enabled via macros defined in cfg/macros.def
     input           rst,
     input           clk,        // always matched to the SDRAM clock
-`ifdef JTFRAME_CLK6
-    input           rst6,  clk6,
-`endif
-`ifdef JTFRAME_CLK24
     input           rst24, clk24,
-`endif
 `ifdef JTFRAME_CLK48
     input           rst48, clk48,
 `endif
-`ifdef JTFRAME_CLK96
     input           rst96, clk96,
-`endif
 `ifdef JTFRAME_PXLCLK
     input           pxl2_cen, pxl_cen,
 `else
@@ -22,41 +15,26 @@
 `endif
     output   [`JTFRAME_COLORW-1:0]  red, green, blue,
     output          LHBL, LVBL, HS, VS,
-    output          game_led,
     // cabinet I/O
-`ifdef JTFRAME_4PLAYERS
     input   [ 3:0]  cab_1p, coin,
     input   [`JTFRAME_BUTTONS+3:0] joystick1, joystick2, joystick3, joystick4,
-`else
-    input   [ 1:0]  cab_1p, coin,
-    input   [`JTFRAME_BUTTONS+3:0] joystick1, joystick2,
-`endif
 `ifdef JTFRAME_PADDLE
-    input   [ 7:0]  paddle_0, paddle_1, `ifdef JTFRAME_4PLAYERS paddle_2, paddle_3, `endif
+    input   [ 7:0]  paddle_0, paddle_1, paddle_2, paddle_3,
 `endif
-`ifdef JTFRAME_DIAL
     input   [ 1:0]  dial_x, dial_y,
-`endif
 `ifdef JTFRAME_MOUSE
     input   [15:0]  mouse_1p, mouse_2p,
+    input   [ 1:0]  mouse_strobe,
 `endif
 `ifdef JTFRAME_SPINNER
     input   [ 7:0]  spinner_1p, spinner_2p,
 `endif
-`ifdef JTFRAME_ANALOG
-    input   [15:0]  joyana_l1, joyana_l2,
-    `ifdef JTFRAME_ANALOG_DUAL
-        input   [15:0]  joyana_r1, joyana_r2,
-    `endif
-    `ifdef JTFRAME_4PLAYERS
-        input   [15:0]  joyana_l3, joyana_l4,
-        `ifdef JTFRAME_ANALOG_DUAL
-            input   [15:0]  joyana_r3, joyana_r4,
-        `endif
-    `endif
-`endif
+    input   [15:0]  joyana_l1, joyana_l2, joyana_l3, joyana_l4,
+    input   [15:0]  joyana_r1, joyana_r2, joyana_r3, joyana_r4,
     // Sound control
     input           enable_fm, enable_psg,
+    input   [ 5:0]  snd_en,
+    input   [ 7:0]  snd_vol,
     // DIP switches
     input   [31:0]  status, dipsw,
     input           dip_pause, dip_test, service, tilt,
@@ -70,13 +48,6 @@
     output          uart_tx,
     input           uart_rx,
 `endif
-    // Sound output
-`ifndef JTFRAME_STEREO
-    output  signed [15:0] snd,
-`else
-    output  signed [15:0] snd_left, snd_right,
-`endif
-    output          sample,
     // Debug
 `ifdef JTFRAME_STATUS
     input      [7:0] st_addr,

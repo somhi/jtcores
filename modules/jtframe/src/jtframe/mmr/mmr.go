@@ -1,3 +1,20 @@
+/*  This file is part of JTFRAME.
+    JTFRAME program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    JTFRAME program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with JTFRAME.  If not, see <http://www.gnu.org/licenses/>.
+
+    Author: Jose Tejada Gomez. Twitter: @topapate
+    Date: 4-1-2025 */
+
 package mmr
 
 import(
@@ -12,6 +29,7 @@ import(
 	"text/template"
 
 	"gopkg.in/yaml.v2"
+	"github.com/Masterminds/sprig/v3"	// more template functions
 )
 
 type Chunk struct {
@@ -32,45 +50,42 @@ type MMRdef struct {
 	Size int
 	Regs []Register
 	Read_only bool
+	No_core_name bool `yaml:"no_core_name"`
 	// Added by jtframe
 	AMSB int
-	Core string
+	Module string
 	Seq []int
 }
 
-func convert( corename, hdl_path string, cfg MMRdef ) {
+func convert( corename, hdl_path string, cfg MMRdef ) (e error) {
 	tpath := filepath.Join(os.Getenv("JTFRAME"), "hdl", "inc", "mmr.v")
-	t := template.Must(template.New("mmr.v").ParseFiles(tpath))
+	t,e := template.New("mmr.v").Funcs(sprig.FuncMap()).ParseFiles(tpath)
+	if e!=nil { return e }
 	var buffer bytes.Buffer
-	t.Execute(&buffer, cfg)
+	if e=t.Execute(&buffer, cfg); e!=nil { return e }
 	// Dump the file
-	fname := fmt.Sprintf("jt%s_%s_mmr.v",corename,cfg.Name)
+	fname := fmt.Sprintf("%s.v",cfg.Module)
 	outpath := filepath.Join(hdl_path,fname)
-	e := os.WriteFile(outpath, buffer.Bytes(), 0644)
-	if e!=nil {
-		fmt.Println("Error:",e)
-	}
+	return os.WriteFile(outpath, buffer.Bytes(), 0644)
 }
 
-func Generate( corename string, verbose bool ) {
-	fname := filepath.Join(os.Getenv("CORES"),corename,"cfg","mmr.yaml")
-	buf, e := os.ReadFile(fname)
-	if e != nil {
-		if verbose {
-			fmt.Println("Cannot open", fname)
-		}
-		return
-	}
+func GetMMRPath( corename string ) (mmrpath string) {
+	return filepath.Join(os.Getenv("CORES"),corename,"cfg","mmr.yaml")
+}
+
+func Generate( corename string, verbose bool ) (e error) {
+	fname := GetMMRPath(corename)
+	buf, e := os.ReadFile(fname); if e != nil { return e }
 	var cfg []MMRdef
-	e = yaml.Unmarshal( buf, &cfg )
-	if e!=nil {
-		fmt.Println(e)
-		os.Exit(1)
-	}
+	e = yaml.Unmarshal( buf, &cfg ); if e != nil { return e }
 	sanity_check(cfg)
 	hdl_path := filepath.Join(os.Getenv("CORES"), corename, "hdl")
 	for k, _ := range cfg {
-		cfg[k].Core=corename
+		if cfg[k].No_core_name {
+			cfg[k].Module=fmt.Sprintf("jt%s_mmr", cfg[k].Name )
+		} else {
+			cfg[k].Module=fmt.Sprintf("jt%s_%s_mmr",corename, cfg[k].Name )
+		}
 		cfg[k].AMSB=int(math.Ceil(math.Log2(float64(cfg[k].Size)))-1)
 		cfg[k].Seq=make([]int,cfg[k].Size)
 		for i:=0;i<cfg[k].Size;i++ { cfg[k].Seq[i]=i }
@@ -119,13 +134,13 @@ func Generate( corename string, verbose bool ) {
 					continue
 				}
 				// Cannot parse it
-				fmt.Printf("Error: jtframe mmr cannot parse location %s\n",ss[m])
-				os.Exit(1)
+				return fmt.Errorf("Error: jtframe mmr cannot parse location %s\n",ss[m])
 
 			}
 		}
-		convert(corename,hdl_path,cfg[k])
+		e = convert(corename,hdl_path,cfg[k]); if e!= nil { return e }
 	}
+	return nil
 }
 
 func sanity_check( cfg []MMRdef ) {
@@ -139,12 +154,12 @@ func sanity_check( cfg []MMRdef ) {
 			os.Exit(1)
 		}
 		if( len(each.Regs)==0 ) {
-			fmt.Printf("Error: %s's MMR does not have any output")
+			fmt.Printf("Error: %s's MMR does not have any output", each.Name)
 			os.Exit(1)
 		}
 		for _, reg := range each.Regs {
 			if reg.Name=="" {
-				fmt.Printf("Error: %s's MMR has unnamed registers\n", each.Name )
+				fmt.Printf("Error: %s's MMR has unnamed registers\n", each.Name)
 				os.Exit(1)
 			}
 			if reg.Dw == 0 {
