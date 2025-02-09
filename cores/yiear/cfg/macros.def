@@ -14,10 +14,3 @@ MAIN_START=0x08000
 SCR_START =0x10000
 OBJ_START =0x14000
 PCM_START =0x24000
-
-[demist_*]
-JTFRAME_DIPBASE=8
-# OSD credits cannot be used when
-# DIP base is less than 13
-JTFRAME_OSD_NOCREDITS
-

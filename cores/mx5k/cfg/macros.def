@@ -18,13 +18,7 @@ SND_START=0x10000
 GFX_START=0x20000
 PCM_START=0xA0000
 
-[mist|sidi|mist_*]
-# OSD credits cannot be used when
-# DIP base is less than 13
-JTFRAME_OSD_NOCREDITS
-
-[demist_*]
-JTFRAME_DIPBASE=8
+[mist|sidi|demist_*|mist_*]
 # OSD credits cannot be used when
 # DIP base is less than 13
 JTFRAME_OSD_NOCREDITS
