@@ -42,14 +42,14 @@ module data_io(
     output reg         ioctl_download = 0, // signal indicating an active download
     output reg   [7:0] ioctl_index,        // menu index used to upload the file
     output             ioctl_wr,
-    output reg  [25:0] ioctl_addr,
+    output reg  [24:0] ioctl_addr,
     output reg   [7:0] ioctl_dout
 );
 
 ///////////////////////////////   DOWNLOADING   ///////////////////////////////
 
 reg  [7:0] data_w;
-reg [25:0] addr_w;
+reg [24:0] addr_w;
 reg        rclk   = 0;
 reg sdo_s;
 
