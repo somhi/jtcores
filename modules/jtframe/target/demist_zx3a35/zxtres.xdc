@@ -1,1 +1,0 @@
-../demist_zx3a200/zxtres.xdc
