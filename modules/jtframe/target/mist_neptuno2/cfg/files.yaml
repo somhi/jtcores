@@ -1,0 +1,24 @@
+jtframe/target/mist:
+  - get:
+    - common.yaml
+   #- jtframe_mist_top.sv
+    - jtframe_mist.sv
+    - jtframe_mist_video.v
+    - user_io.v
+    - i2c_master.v
+    - i2s.v
+    - spdif.v
+    - data_io.v
+jtframe/target/mist_neptuno2:
+  - get:
+    - constraints.sdc
+    - jtframe_mist_neptuno2_top
+jtframe/target/sidi128:
+  - get:
+    - pll.qip
+jtframe:
+  - from: video
+    get: 
+      - jtframe_lfbuf_bram.v
+      - jtframe_lfbuf_bram_ctrl.v
+      - jtframe_lfbuf_line.v           
