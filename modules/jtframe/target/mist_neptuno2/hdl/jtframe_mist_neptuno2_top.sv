@@ -115,7 +115,7 @@ module mist_neptuno2_top #(parameter
     output          JOY_SELECT,
     input           XJOY_CLK,
     input           XJOY_LOAD,
-    output          XJOY_DATA
+    output          XJOY_DATA,
 
     input           UART_RX,
     output          UART_TX

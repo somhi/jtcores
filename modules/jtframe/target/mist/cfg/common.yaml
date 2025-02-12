@@ -28,14 +28,14 @@ jtframe/target/mist:
       - jtframe_mist_video.v
       - osd.sv
       - rgb2ypbpr.v
-  - unless: [ SIDI128, POCKET ]
+  - unless: [ SIDI128, MIST_NEPTUNO2, POCKET ]
     get:
       - pll_game.qip
   - unless: [ POCKET ]
     get:
       - jtframe_mist_base.v
       - mist_io.sdc
-  - unless: [ SIDI128 ]
+  - unless: [ SIDI128, MIST_NEPTUNO2 ]
     get:
       - sdram_clk.sdc # must come after mist_io.sdc
       # PLLs

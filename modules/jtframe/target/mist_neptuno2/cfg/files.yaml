@@ -12,7 +12,7 @@ jtframe/target/mist:
 jtframe/target/mist_neptuno2:
   - get:
     - constraints.sdc
-    - jtframe_mist_neptuno2_top
+    - jtframe_mist_neptuno2_top.sv
 jtframe/target/sidi128:
   - get:
     - pll.qip

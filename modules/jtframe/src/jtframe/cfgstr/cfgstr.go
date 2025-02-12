@@ -119,7 +119,7 @@ func make_cfgstr(cfg Config, def map[string]string) (cfgstr string, e error) {
 	var tpath string
 	if cfg.Template == "" {
 		tfolder := cfg.Target
-		if cfg.Target == "sidi" || cfg.Target == "sidi128" { // SiDi shares the config string with MiST
+		if cfg.Target == "sidi" || cfg.Target == "sidi128" || cfg.Target == "mist_neptuno2" { // SiDi shares the config string with MiST
 			tfolder = "mist"
 		}
 		if cfg.Target == "pocket" { // Pocket doesn't have a config string

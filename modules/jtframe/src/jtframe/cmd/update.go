@@ -66,6 +66,7 @@ Set --git to use \$JTBIN instead.
 			up_cfg.Targets["mist"]    = true
 			up_cfg.Targets["sidi"]    = true
 			up_cfg.Targets["sidi128"] = true
+			up_cfg.Targets["mist_neptuno2"] = true			
 			up_cfg.Targets["pocket"]  = true
 			up_cfg.Targets["mister"]  = true
 			up_cfg.Targets["neptuno"] = true
@@ -87,7 +88,7 @@ func init() {
 
 	target_flag := goflag.NewFlagSet("Target parser", goflag.ContinueOnError )
 	target_flag.Func( "target", "Adds a new target", func(t string) error { up_cfg.Targets[t] = true; return nil } )
-	flag.StringSliceVarP( &up_targets, "target","t",[]string{"mist","sidi","sidi128","mister","pocket"}, "Comma separated list of targets" )
+	flag.StringSliceVarP( &up_targets, "target","t",[]string{"mist","sidi","sidi128","mist_neptuno2","mister","pocket"}, "Comma separated list of targets" )
 
 	flag.AddGoFlagSet( target_flag )
 	// Ignored flags, which are handled on the script side

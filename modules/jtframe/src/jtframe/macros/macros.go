@@ -265,7 +265,7 @@ func is_mem_managed(corename string) bool {
 func set_separator(target string) {
 	var separator string
 	switch target {
-	case "mist", "sidi", "neptuno": separator=""
+	case "mist", "sidi", "neptuno", "mist_neptuno2": separator=""
 	case "mister", "sockit","de1soc","de10std","sidi128":
 		separator = "-;"
 	}
