@@ -31,7 +31,7 @@ jtframe/target/mist:
   - unless: [ SIDI128, MIST_NEPTUNO2, POCKET ]
     get:
       - pll_game.qip
-  - unless: [ POCKET ]
+  - unless: [ POCKET, MIST_NEPTUNO2 ]
     get:
       - jtframe_mist_base.v
       - mist_io.sdc

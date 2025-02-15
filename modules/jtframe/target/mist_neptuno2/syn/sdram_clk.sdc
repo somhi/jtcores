@@ -1,0 +1,1 @@
+../../mist/syn/sdram_clk.sdc
