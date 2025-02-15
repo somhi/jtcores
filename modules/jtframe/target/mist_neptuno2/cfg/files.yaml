@@ -9,7 +9,7 @@ jtframe/target/mist:
     - i2c_master.v
     - i2s.v
     - spdif.v
-    - data_io.v
+    - data_io.v   
 jtframe/target/mist_neptuno2:
   - get:
     - pll.qip    
