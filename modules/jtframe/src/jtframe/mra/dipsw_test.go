@@ -1,8 +1,12 @@
 package mra
 
 import(
+	"path/filepath"
+	"os"
 	"slices"
 	"testing"
+
+	"github.com/jotego/jtframe/xmlnode"
 )
 
 var td struct { // Test Data
@@ -54,4 +58,27 @@ func make_strings(vv MAMEDIPValues) (ss []string) {
 		ss[k]=v.Name
 	}
 	return ss
+}
+
+func Test_make_dip_file(t *testing.T) {
+	root := xmlnode.MakeNode("misterromdescription")
+	root.AddNode("setname").SetText("dipswtester")
+	root.AddNode("switches").AddAttr("default","12,34,56,78")
+	rom_folder := filepath.Join(os.Getenv("JTROOT"),"rom")
+	os.MkdirAll(rom_folder,0777)
+	expected := filepath.Join(rom_folder,"dipswtester.dip")
+	filename := make_dip_file(&root)
+	defer os.Remove(filename)
+	if filename!=expected {
+		t.Errorf("Wrong file name. Got %s, expected %s",filename,expected)
+	}
+	contents, e := os.ReadFile(filename)
+	if e!=nil {
+		t.Error(e)
+		return
+	}
+	if string(contents)!="78563412" {
+		t.Log(string(contents))
+		t.Errorf("Bad file contents.")
+	}
 }

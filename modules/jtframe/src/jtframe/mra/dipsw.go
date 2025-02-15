@@ -20,11 +20,14 @@ package mra
 import(
     "fmt"
     "log"
+    "os"
     "path/filepath"
     "regexp"
     "sort"
     "strconv"
     "strings"
+
+    . "github.com/jotego/jtframe/xmlnode"
 )
 
 func dipsw_tag(ds MachineDIP ) bool {
@@ -58,7 +61,7 @@ func make_switches(root *XMLNode, machine *MachineXML, cfg Mame2MRA, args Args) 
         if ds.Tag != last_tag {
             last_tag = ds.Tag
             m := n.AddNode(last_tag)
-            m.comment = true
+            m.SetIndent()
         }
         sort.Slice(ds.Dipvalue, func(p, q int) bool {
             return ds.Dipvalue[p].Value < ds.Dipvalue[q].Value
@@ -321,4 +324,38 @@ func dip_mask( bits string ) int {
         mask &= ^(1<<k)
     }
     return mask
+}
+
+func make_dip_file(root *XMLNode) string {
+    setname := get_setname_from_mra(root)
+    filename := filepath.Join(os.Getenv("JTROOT"),"rom",setname+".dip")
+    dipval := get_dipsw_from_mra(root)
+    if dipval == "" { return "" }
+    save_dip_file(filename,dipval)
+    return filename
+}
+
+func get_setname_from_mra(root *XMLNode) (string) {
+    node := root.FindNode("setname")
+    if node==nil {
+        return ""
+    }
+    return node.GetText()
+}
+
+func get_dipsw_from_mra(root *XMLNode) (string) {
+    swnode := root.FindNode("switches")
+    if swnode==nil {
+        return ""
+    }
+    return swnode.GetAttr("default")
+}
+
+func save_dip_file(filename, ds string) {
+    parts := strings.Split(ds,",")
+    reordered := ""
+    for k:=len(parts)-1;k>=0;k-- {
+        reordered += parts[k]
+    }
+    os.WriteFile(filename,[]byte(reordered),0644)
 }

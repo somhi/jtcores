@@ -43,11 +43,7 @@ type MachineXML struct {
 		Name  string `xml:"name,attr"`
 		Clock int    `xml:"clock,attr"`
 	} `xml:"chip"`
-	Display struct {
-		Rotate int `xml:"rotate,attr"`
-		Width  int `xml:"width,attr"`
-		Height int `xml:"height,attr"`
-	} `xml:"display"`
+	Display MameDisplay `xml:"display"`
 	Sound struct {
 		Channels int `xml:"channels"`
 	} `xml:"sound"`
@@ -62,6 +58,11 @@ type MachineXML struct {
 	Dipswitch []MachineDIP `xml:"dipswitch"`
 	// exclude pinballs
 	Ismechanical bool `xml:"ismechanical,attr"`
+}
+
+// implements Matcher interface
+func (machine *MachineXML)IsMatch(m Matchable) bool {
+	return m.Match(machine)>0
 }
 
 type MameROM struct {
@@ -85,6 +86,12 @@ type MameROM struct {
 
 type MameDevice struct {
 	Name string `xml:"name,attr"`
+}
+
+type MameDisplay struct {
+	Rotate int `xml:"rotate,attr"`
+	Width  int `xml:"width,attr"`
+	Height int `xml:"height,attr"`
 }
 
 type MachineDIP struct {
