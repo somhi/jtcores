@@ -103,20 +103,20 @@ module mist_neptuno2_top #(parameter
     `endif
 
     // SD card
-	// output       SD_CS,
-	input           SD_SCK,     //SD_SCK is being driven by middleboard
-	// output       SD_MOSI,
-	input           SD_MISO,
+    // output       SD_CS,
+    input           SD_SCK,     //SD_SCK is being driven by middleboard
+    // output       SD_MOSI,
+    input           SD_MISO,
 
-    // forward JAMMA DB9 data
-    output          JOY_CLK,
-    output          JOY_LOAD,
-    input           JOY_DATA,
-    output          JOY_SELECT,
-    input           XJOY_CLK,
-    input           XJOY_LOAD,
-    output          XJOY_DATA,
-
+    // forward JAMMA DB9 data    
+    output  	    JOY_CLK,
+    output  	    JOY_LOAD,
+    input  	    	JOY_DATA,        
+    output  	    JOY_SELECT,
+    input  			JOY_XCLK,
+    input  			JOY_XLOAD,
+    output  		JOY_XDATA,
+    
     input           UART_RX,
     output          UART_TX
 
@@ -143,9 +143,10 @@ assign spi_do_int = SPI_SS4 ? 1'bz : SD_MISO;
 assign SPI_DO = spi_do_int;
 
 // JAMMA interface
-assign JOY_CLK    = XJOY_CLK;
-assign JOY_LOAD   = XJOY_LOAD;
-assign XJOY_DATA  = JOY_DATA;
+assign JOY_CLK = JOY_XCLK;
+assign JOY_LOAD = JOY_XLOAD;
+assign JOY_XDATA = JOY_DATA;
+assign JOY_SELECT = 1'b1;
 
 `ifdef MIST_USE_QSPI
 localparam bit QSPI = 1;
