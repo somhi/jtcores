@@ -142,9 +142,9 @@ set_location_assignment PIN_AD3 -to JOY_DATA
 set_location_assignment PIN_A19 -to JOY_SELECT
 
 # joysticks from mb
-set_location_assignment PIN_AF4 -to JOY_XCLK
-set_location_assignment PIN_AE3 -to JOY_XLOAD
-set_location_assignment PIN_AF5 -to JOY_XDATA
+set_location_assignment PIN_AF4 -to XJOY_CLK
+set_location_assignment PIN_AE3 -to XJOY_LOAD
+set_location_assignment PIN_AF5 -to XJOY_DATA
 
 # sd card
 set_location_assignment PIN_A4 -to SD_MISO
