@@ -18,7 +18,7 @@
 package mem
 
 import(
-    "github.com/jotego/jtframe/macros"
+    "jotego/jtframe/macros"
 )
 
 func (item *BRAMBus_Ioctl) Enabled() bool {
@@ -43,4 +43,14 @@ func (item *SDRAMBus) Enabled() bool {
         Unless: item.Unless,
     }
     return aux.Enabled()
+}
+
+func (cfg *MemConfig)calc_prom_we() {
+    offset := 0
+    for k,_ := range cfg.BRAM {
+        bram := &cfg.BRAM[k]
+        if !bram.Prom { continue }
+        bram.PROM_offset = offset
+        offset += 1<<bram.Addr_width
+    }
 }

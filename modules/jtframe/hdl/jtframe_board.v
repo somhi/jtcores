@@ -41,6 +41,8 @@ module jtframe_board #(parameter
     input               clk_pico,
 
     input        [ 6:0] core_mod,
+    output              vertical,
+    output       [ 1:0] black_frame,
     // LED
     input               osd_shown,
     output              led,
@@ -96,13 +98,6 @@ module jtframe_board #(parameter
     output       [ 3:0] game_coin,       game_start,
     output              game_service,
     output              game_tilt,
-    // keyboard
-    input        [ 7:0] board_digit,
-    input               board_reset, board_pause, board_tilt, board_test,
-                        board_service, board_shift, board_ctrl, board_alt,
-    // debug features - remove on #935
-    input        [ 3:0] board_gfx,
-    input               board_plus, board_minus,
     // Mouse & Paddle
     input        [ 8:0] bd_mouse_dx, bd_mouse_dy,
     output       [15:0] mouse_1p,    mouse_2p,
@@ -115,6 +110,9 @@ module jtframe_board #(parameter
     input        [ 8:0] spinner_1,      spinner_2,
     output       [ 7:0] game_paddle_1, game_paddle_2,
     output       [ 1:0] dial_x, dial_y,
+
+    // Lightguns
+    output       [ 8:0] gun_1p_x, gun_1p_y, gun_2p_x, gun_2p_y,
 
     // DIP and OSD settings
     input        [63:0] status,
@@ -225,19 +223,24 @@ wire         game_pause, soft_rst, game_test;
 wire         cheat_led, pre_pause;
 
 wire   [9:0] key_joy1, key_joy2, key_joy3, key_joy4;
+wire   [8:0] cross1_x, cross1_y, cross2_x, cross2_y;
 wire   [7:0] key_digit;
 wire   [3:0] key_start, key_coin, key_gfx;
 wire   [5:0] key_snd;
-wire   [1:0] sensty, frame_blank;
+wire   [1:0] sensty;
 wire  [12:7] func_key;
 wire         key_service, key_tilt, key_plus, key_minus;
 wire         locked;
 wire         dial_raw_en, dial_reverse, snd_mode;
+wire         lightgun_en, dipflip_xor;
+wire   [1:0] cross_disable;
 wire         debug_toggle;
 wire   [1:0] debug_plus, debug_minus;
 
 wire [COLORW-1:0] crdts_r, crdts_g, crdts_b,
-                  dbg_r, dbg_g, dbg_b;
+                  dbg_r, dbg_g, dbg_b,
+                  cross_r,cross_g, cross_b;
+wire              crdts_lhbl, crdts_lvbl;
 
 wire [ 3:0] bax_rd, bax_wr, bax_ack;
 wire [15:0] bax_din;
@@ -248,11 +251,18 @@ wire [SDRAMW-1:0] bax_addr;
 wire LHBLs;
 
 assign sensty    = status[33:32]; // MiST should drive these pins
-assign dial_raw_en  = core_mod[3];
-assign dial_reverse = core_mod[4];
-assign frame_blank  = core_mod[6:5];
 
-assign base_rgb  = { dbg_r, dbg_g, dbg_b };
+jtframe_coremod u_coremod(
+    .core_mod       ( core_mod      ),
+    .vertical       ( vertical      ),
+    .lightgun_en    ( lightgun_en   ),
+    .dipflip_xor    ( dipflip_xor   ),
+    .dial_raw_en    ( dial_raw_en   ),
+    .dial_reverse   ( dial_reverse  ),
+    .black_frame    ( black_frame   )
+);
+
+assign base_rgb  = { cross_r, cross_g, cross_b };
 
 `ifdef JTFRAME_PXLCLK
     jtframe_pxlcen u_pxlcen(
@@ -305,7 +315,7 @@ jtframe_led u_led(
 reg  show_credits;
 `ifdef JTFRAME_CREDITS
     wire toggle = game_start!=4'hf;
-    wire osd_credits_disabled = ~status[12];
+    wire osd_credits_disabled = status[12];
     reg  fast_scroll;
 
     always @(posedge clk_sys) begin
@@ -315,7 +325,7 @@ reg  show_credits;
             if( osd_credits_disabled ) show_credits <= 0;
         `endif;
         `ifdef JTFRAME_CREDITS_HIDEVERT
-            if( core_mod[0] ) show_credits <= 0; // hide for vertical games
+            if( vertical ) show_credits <= 0; // hide for vertical games
         `endif
         `ifdef JTFRAME_CREDITS_AON
             show_credits <= 1;
@@ -333,13 +343,13 @@ reg  show_credits;
         .pxl_cen    ( pxl_cen       ),
 
         // input image
-        .HB         ( LHBLs         ),
-        .VB         ( LVBL          ),
-        .rgb_in     ( { game_r, game_g, game_b } ),
+        .HB         ( LHBLs          ),
+        .VB         ( LVBL           ),
+        .rgb_in     ( {game_r, game_g, game_b} ),
         `ifdef JTFRAME_CREDITS_NOROTATE
             .rotate ( 2'd0          ),
         `else
-            .rotate ( locked ? 2'd0 : { rotate[1], core_mod[0] }  ),
+            .rotate ( locked ? 2'd0 : { rotate[1], vertical }  ),
         `endif
         .toggle     ( toggle        ),
         .fast_scroll( fast_scroll   ),
@@ -366,13 +376,13 @@ reg  show_credits;
         `endif
 
         // output image
-        .HB_out     ( base_lhbl      ),
-        .VB_out     ( base_lvbl      ),
+        .HB_out     (  crdts_lhbl    ),
+        .VB_out     (  crdts_lvbl    ),
         .rgb_out    ( {crdts_r, crdts_g, crdts_b } )
     );
 `else
     assign { crdts_r, crdts_g, crdts_b } = { game_r, game_g, game_b };
-    assign { base_lhbl, base_lvbl    } = { LHBLs, LVBL };
+    assign { crdts_lhbl, crdts_lvbl    } = { LHBLs, LVBL };
     initial show_credits=0;
 `endif
 
@@ -422,7 +432,6 @@ jtframe_filter_keyboard u_filter_keyboard(
 
 `ifndef JTFRAME_RELEASE
     wire [7:0] sys_info;
-    // wire       flip_info = dip_flip & ~core_mod[0]; // Do not flip the debug display for vertical games
     wire       flip_info = 0;
 
     jtframe_debug #(.COLORW(COLORW)) u_debug(
@@ -443,8 +452,8 @@ jtframe_filter_keyboard u_filter_keyboard(
         .rin         ( crdts_r       ),
         .gin         ( crdts_g       ),
         .bin         ( crdts_b       ),
-        .lhbl        ( base_lhbl     ),
-        .lvbl        ( base_lvbl     ),
+        .lhbl        ( crdts_lhbl    ),
+        .lvbl        ( crdts_lvbl    ),
         .rout        ( dbg_r         ),
         .gout        ( dbg_g         ),
         .bout        ( dbg_b         ),
@@ -499,6 +508,11 @@ jtframe_filter_keyboard u_filter_keyboard(
         .mouse_f    ( bd_mouse_f    ),
         .mouse_dx   ( bd_mouse_dx   ),
         .mouse_dy   ( bd_mouse_dy   ),
+        // lightgun
+        .gun_1p_x   ( gun_1p_x      ),
+        .gun_1p_y   ( gun_1p_y      ),
+        .gun_2p_x   ( gun_2p_x      ),
+        .gun_2p_y   ( gun_2p_y      ),
         .st_addr    ( debug_bus     ),
         .st_dout    ( sys_info      )
     );
@@ -530,15 +544,18 @@ jtframe_short_blank #(
     .LHBL       ( LHBL            ),
     .LVBL       ( LVBL            ),
     .v_en       ( 1'b0            ),
-    .h_en       ( frame_blank[0]  ),
-    .wide       ( frame_blank[1]  ),
+    .h_en       ( black_frame[0]  ),
+    .wide       ( black_frame[1]  ),
     .HS         ( hs              ),
     .hb_out     ( LHBLs           ),
     .vb_out     (                 )
 );
 
-jtframe_inputs #( .BUTTONS( BUTTONS ))
-u_inputs(
+jtframe_inputs #(
+    .BUTTONS( BUTTONS      ),
+    .WIDTH  ( VIDEO_WIDTH  ),
+    .HEIGHT ( VIDEO_HEIGHT )
+) u_inputs(
     .rst            ( game_rst        ),
     .clk            ( clk_sys         ),
     .vs             ( vs              ),
@@ -546,7 +563,7 @@ u_inputs(
     .lvbl           ( LVBL            ),
     .ioctl_rom      ( dwnld_busy      ),
     .rot            ( rot_control     ),
-    .rot_ccw        ( rotate[1]       ),
+    .rotate         ( rotate          ),
     .dial_raw_en    ( dial_raw_en     ),
     .dial_reverse   ( dial_reverse    ),
     .sensty         ( sensty          ),
@@ -568,12 +585,12 @@ u_inputs(
     .key_joy4       ( key_joy4        ),
     .key_start      ( key_start       ),
     .key_coin       ( key_coin        ),
-    .key_service    ( key_service | board_service ),
-    .key_tilt       ( key_tilt    | board_tilt    ),
-    .key_pause      ( key_pause   | board_pause   ),
-    .key_test       ( key_test    | board_test    ),
+    .key_service    ( key_service     ),
+    .key_tilt       ( key_tilt        ),
+    .key_pause      ( key_pause       ),
+    .key_test       ( key_test        ),
     .osd_pause      ( osd_pause       ),
-    .key_reset      ( key_reset | board_reset     ),
+    .key_reset      ( key_reset       ),
     .key_ctrl       ( key_ctrl        ),
     .key_shift      ( key_shift       ),
     .func_key       ( func_key        ),
@@ -610,6 +627,17 @@ u_inputs(
     .dial_x         ( dial_x          ),
     .dial_y         ( dial_y          ),
 
+    // Lightguns
+    .gun_1p_x       ( gun_1p_x        ),
+    .gun_1p_y       ( gun_1p_y        ),
+    .gun_2p_x       ( gun_2p_x        ),
+    .gun_2p_y       ( gun_2p_y        ),
+    .cross1_x       ( cross1_x        ),
+    .cross1_y       ( cross1_y        ),
+    .cross2_x       ( cross2_x        ),
+    .cross2_y       ( cross2_y        ),
+    .cross_disable  ( cross_disable   ),
+
     // Input recording
     .dip_pause      ( dip_pause       ),
     .ioctl_lock     ( prog_lock       ),
@@ -633,7 +661,8 @@ u_inputs(
 jtframe_dip #(.XOR_ROT(XOR_ROT)) u_dip(
     .clk        ( clk_sys       ),
     .status     ( status        ),
-    .core_mod   ( core_mod      ),
+    .vertical   ( vertical      ),
+    .dipflip_xor( dipflip_xor   ),
     .game_pause ( game_pause    ),
     .hdmi_arx   ( hdmi_arx      ),
     .hdmi_ary   ( hdmi_ary      ),
@@ -647,6 +676,35 @@ jtframe_dip #(.XOR_ROT(XOR_ROT)) u_dip(
     .dip_pause  ( pre_pause     ),
     .dip_flip   ( dip_flip      ),
     .dip_fxlevel( dip_fxlevel   )
+);
+
+jtframe_crosshair #(.COLORW(COLORW)) u_crosshair(
+    .rst          ( rst           ),
+    .clk          ( clk_sys       ),
+    .pxl_cen      ( pxl_cen       ),
+    .pre_lvbl     ( crdts_lvbl    ),
+    .pre_lhbl     ( crdts_lhbl    ),
+    .pre_hs       ( hs            ),
+    .pre_vs       ( vs            ),
+    .hs           (               ),
+    .vs           (               ),
+    .lvbl         ( base_lvbl     ),
+    .lhbl         ( base_lhbl     ),
+    .flip         ( dip_flip      ),
+    `ifdef JTFRAME_LIGHTGUN_ON
+    .draw_en      ( 1'b1          ), `else
+    .draw_en      ( lightgun_en   ), `endif
+    .cross_disable( cross_disable ),
+    .gun_1p_x     ( cross1_x      ),
+    .gun_1p_y     ( cross1_y      ),
+    .gun_2p_x     ( cross2_x      ),
+    .gun_2p_y     ( cross2_y      ),
+    .rin          ( dbg_r         ),
+    .gin          ( dbg_g         ),
+    .bin          ( dbg_b         ),
+    .rout         ( cross_r       ),
+    .gout         ( cross_g       ),
+    .bout         ( cross_b       )
 );
 
 `ifdef JTFRAME_CHEAT

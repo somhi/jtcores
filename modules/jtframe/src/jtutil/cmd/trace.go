@@ -25,15 +25,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var trace_flags struct {
-	make string
-}
-
-// traceCmd represents the trace command
-var traceCmd = &cobra.Command{
-	Use:   "trace",
-	Short: "Compare VCD file with MAME trace output",
-	Long: `Use to debug a simulation against MAME.
+func init() {
+	const help=
+`Use to debug a simulation against MAME.
 Prepare a MAME trace file with register dumps, and a VCD file with the registers
 you want to compare.
 
@@ -55,32 +49,38 @@ The VCD comparison will not be done while these signals are high:
 - alu_busy      the ALU is busy solving a long operation
 - str_busy      a long string operation is in progress
 - stack_busy    processing long stack related operations
-`,
-	Run: func(cmd *cobra.Command, args []string) {
-		runTrace()
-	},
-}
-
-func init() {
+`
+	traceCmd := &cobra.Command{
+		Use:   "trace",
+		Short: "Compare VCD file with MAME trace output",
+		Long:   help,
+		Run:    run_trace_cmd,
+	}
 	rootCmd.AddCommand(traceCmd)
 	flg  := traceCmd.Flags()
 
-	flg.StringVarP(&trace_flags.make,"make","m", "", "Create MAME trace file for the given CPU")
+	flg.StringP("make",     "m", "",      "Create MAME trace file for the given CPU")
+	flg.StringP("base-name","b", "debug", ".trace and .vcd files with this name will be used")
 }
 
-func runTrace() { //////////////// command's main function
-	if trace_flags.make != "" {
-		makeMAME(trace_flags.make)
+func run_trace_cmd(cmd *cobra.Command, args []string) {
+	if make_sample_file,_ := cmd.Flags().GetString("make"); make_sample_file!="" {
+		makeMAME(make_sample_file)
 		return
 	}
+	basename,_ := cmd.Flags().GetString("base-name")
+	run_trace_comparison(basename)
+}
+
+func run_trace_comparison(basename string) {
 	trace := &vcd.LnFile{}
 	vcdf  := &vcd.LnFile{}
-	vcdf.Open("debug.vcd")
+	vcdf.Open(basename+".vcd")
 	defer vcdf.Close()
 	signals := vcd.GetSignals(vcdf)
 	vcd.RenameRegs( signals )
 
-	trace.Open("debug.trace")
+	trace.Open(basename+".trace")
 	defer trace.Close()
 
 	trace.Scan()
@@ -92,7 +92,7 @@ func makeMAME( cpu string ) {
 	var s string
 	switch strings.ToLower(cpu) {
 		case "z80": s=`trace off
-trace debug.trace,maincpu,noloop,{tracelog "PC=%X,AF=%X,BC=%X,DE=%X,HL=%X,AF2=%X,BC2=%X,DE2=%X,HL2=%X,IX=%X,IY=%X,SP=%X,* ",pc,af,bc,de,hl,af2,bc2,de2,hl2,ix,iy,sp}
+trace debug.trace,maincpu,noloop,{tracelog "PC=%4X,AF=%4X,BC=%4X,DE=%4X,HL=%4X,AF2=%4X,BC2=%4X,DE2=%4X,HL2=%4X,IX=%4X,IY=%4X,SP=%4X,* ",pc,af,bc,de,hl,af2,bc2,de2,hl2,ix,iy,sp}
 `
 		case "t900h": s=`trace debug.trace,maincpu,noloop,{tracelog "PC=%X,XWA0=%X,XBC0=%X,XDE0=%X,XHL0=%X,XWA1=%X,XBC1=%X,XDE1=%X,XHL1=%X,XWA2=%X,XBC2=%X,XDE2=%X,XHL2=%X,XWA3=%X,XBC3=%X,XDE3=%X,XHL3=%X,XIX=%X,XIY=%X,XIZ=%X,XSP=%X,* ",pc,xwa0,xbc0,xde0,xhl0,xwa1,xbc1,xde1,xhl1,xwa2,xbc2,xde2,xhl2,xwa3,xbc3,xde3,xhl3,xix,xiy,xiz,xssp}
 `

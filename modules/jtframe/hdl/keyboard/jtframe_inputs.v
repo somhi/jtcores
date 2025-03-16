@@ -24,7 +24,7 @@ module jtframe_inputs(
     input             lhbl,
 
     input             rot,
-    input             rot_ccw,
+    input      [1:0]  rotate,
     input             dial_raw_en,
     input             dial_reverse,
     input             dip_pause,
@@ -67,6 +67,11 @@ module jtframe_inputs(
     output      [ 7:0] game_paddle_1, game_paddle_2,
     output      [ 1:0] dial_x, dial_y,
 
+    // Lightguns
+    output      [ 8:0] gun_1p_x, gun_1p_y, gun_2p_x, gun_2p_y,
+                       cross1_x, cross1_y, cross2_x, cross2_y,
+    output      [ 1:0] cross_disable,
+
     input       [ 7:0] debug_bus,
     input              ioctl_lock,
 
@@ -87,7 +92,7 @@ module jtframe_inputs(
     input              ioctl_rom
 );
 
-parameter BUTTONS    = 2;
+parameter BUTTONS    = 2, WIDTH = 384, HEIGHT = 224;
 
 wire [ 2:0] mouse_but_1p, mouse_but_2p;
 wire [ 5:0] recjoy1;
@@ -123,7 +128,7 @@ jtframe_joysticks u_joysticks(
     .clk        ( clk           ),
     .vs         ( vs            ),
     .rot        ( rot           ),
-    .rot_ccw    ( rot_ccw       ),
+    .rot_ccw    ( rotate[1]     ),
     .locked     ( locked        ),
 
     .board_coin ( board_coin    ),
@@ -194,7 +199,7 @@ jtframe_pause u_pause(
     .key_pause  ( key_pause     ),
     .joy_pause  ( joy_pause     ),
     .osd_pause  ( osd_pause     ),
-    .service    ( key_service   ),
+    .adv_frame  ( key_service   ),
     .lvbl       ( lvbl          ),
     .game_pause ( game_pause    )
 );
@@ -253,6 +258,28 @@ jtframe_mouse u_mouse(
     .mouse_strobe(mouse_strobe ),
     .but_1p     ( mouse_but_1p ),
     .but_2p     ( mouse_but_2p )
+);
+
+jtframe_lightgun #(.WIDTH(WIDTH), .HEIGHT(HEIGHT)
+) u_lightgun(
+    .rst          ( rst           ),
+    .clk          ( clk           ),
+    .vs           ( vs            ),
+    .rotate       ( rotate        ),
+    .cross_disable( cross_disable ),
+    .mouse_1p     ( mouse_1p      ),
+    .mouse_2p     ( mouse_2p      ),
+    .joyana1      ( ana1          ),
+    .joyana2      ( ana2          ),
+    .mouse_strobe ( mouse_strobe  ),
+    .gun_1p_x     ( gun_1p_x      ),
+    .gun_1p_y     ( gun_1p_y      ),
+    .gun_2p_x     ( gun_2p_x      ),
+    .gun_2p_y     ( gun_2p_y      ),
+    .cross1_x     ( cross1_x      ),
+    .cross1_y     ( cross1_y      ),
+    .cross2_x     ( cross2_x      ),
+    .cross2_y     ( cross2_y      )
 );
 
 jtframe_beta_lock u_lock(

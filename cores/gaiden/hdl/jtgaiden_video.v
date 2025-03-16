@@ -22,6 +22,8 @@ module jtgaiden_video(
 
     input               pxl2_cen,
     input               pxl_cen,
+    input               objdly, vsize_en,
+    input        [ 1:0] frmbuf_en,
 
     output              LHBL,
     output              LVBL,
@@ -95,13 +97,13 @@ end
 
 jtframe_vtimer #(
     .HS_START( 9'o452 ),
-    .HB_START( 9'o411 ),
-    .HB_END  ( 9'o011 ),
+    .HB_START( 9'o410 ),
+    .HB_END  ( 9'o010 ),
     .HCNT_END( 9'o577 ),
 
     .V_START ( 9'o020 ),
-    .VS_START( 9'o023 ),
-    .VS_END  ( 9'o026 ),
+    .VS_START( 9'o030 ),
+    .VS_END  ( 9'o033 ),
     .VB_START( 9'o377 ),
     .VB_END  ( 9'o037 ),
     .VCNT_END( 9'o427 )
@@ -186,6 +188,9 @@ jtgaiden_obj u_obj(
     .pxl_cen    ( pxl_cen   ),
     .flip       ( flip      ),
     .blankn     ( vblankn   ),
+    .frmbuf_en  ( frmbuf_en ),
+    .objdly     ( objdly    ),
+    .vsize_en   ( vsize_en  ),
 
     .lvbl       ( LVBL      ),
     .hs         ( HS        ),
@@ -207,7 +212,6 @@ jtgaiden_obj u_obj(
 
 jtgaiden_colmix u_colmix(
     .clk        ( clk       ),
-    .lvbl       ( LVBL      ),
     .pxl_cen    ( pxl_cen   ),
 
     .pal_addr   ( pal_addr  ),

@@ -1,5 +1,7 @@
 params:
   - { name: SUB_OFFSET, value: "`SUB_START>>1" }
+ports:
+  - { name: bus_addr, msb: 15 }
 clocks:
   clk:
     - freq: 3072000
@@ -27,14 +29,19 @@ audio:
   # mute: true
   pcb:
     # must match PCB order in TOML file - not automated check yet
-    - { rfb: 1k, rsums: [ 1k, 1k, 1k ] } # flstory
-    - { rfb: 1k, rsums: [ 1k, 1k, 1k ] } # onna34ro
-    - { rfb: 1k, rsums: [ 1k, 4k, 4k ] } # rumba
-    - { rfb: 1k, rsums: [ 1k, 4k, 5k ] } # victnine
+    # psg2 not presents on boards marked with 999kOhm resistor to null the gain
+    #                    MSM   PSG  PSG2   DAC
+    - { rfb: 1k, rsums: [   1k,   1k, 999k,   1k ] } # flstory
+    - { rfb: 1k, rsums: [   1k,   1k, 999k, 1.5k ] } # onna34ro
+    - { rfb: 1k, rsums: [   1k,   4k, 999k,   4k ] } # rumba
+    - { rfb: 1k, rsums: [   1k,   4k, 999k,   5k ] } # victnine
+    - { rfb: 1k, rsums: [ 0.5k, 5.0k, 5.0k,   2k ] } # nycaptor
+    - { rfb: 1k, rsums: [ 0.5k, 5.0k, 5.0k,   2k ] } # cyclsht
   channels:
 #     # FIR should be 3kHz, not 4kHz
     - { name: msm,   module: jt5232,rsum: 1k, pre: 1.1 }
     - { name: psg,   module: jt5232,rsum: 1k, pre: 1.0 } # not using jt49 settings because of signed output
+    - { name: psg2,  module: jt5232,rsum: 1k, pre: 1.0 } # not using jt49 settings because of signed output
     - { name: dac,   data_width: 8, rsum: 1k, unsigned: true, dcrm: true }
 sdram:
   banks:
@@ -64,9 +71,8 @@ bram:
     data_width: 8
     prom: true
   - name: sha
-    addr: main_addr[10:0]
     din: bus_dout
-    addr_width: 11
+    addr_width: 13
     data_width: 8
     rw: true
   - name: vram
@@ -74,7 +80,7 @@ bram:
     data_width: 16
     dual_port:
       name: shram
-      addr: main_addr[10:1]
+      addr: bus_addr[10:1]
       din:  "{2{bus_dout}}"
       dout: vram16_dout
       we:   vram_we
@@ -88,7 +94,7 @@ bram:
     rw: true
     dual_port:
       name: shram
-      addr: main_addr[7:0]
+      addr: bus_addr[7:0]
       din:  bus_dout
       dout: oram8_dout
       we:   oram8_we

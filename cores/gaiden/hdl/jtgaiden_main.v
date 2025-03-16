@@ -20,6 +20,7 @@ module jtgaiden_main(
     input                rst,
     input                clk,
     input                LVBL,
+    input                mcutype,
 
     output        [17:1] main_addr,
     output        [15:0] main_dout,
@@ -71,9 +72,10 @@ wire        UDSn, LDSn, RnW, ASn, VPAn, DTACKn, BUSn;
 wire [ 2:0] FC, IPLn;
 reg         io_cs, txt_cs, scra_cs, scrb_cs, obj_cs, pal_cs, regs_cs, cab_cs,
             txty_cs, scray_cs, scrby_cs,
-            txtx_cs, scrax_cs, scrbx_cs, objy_cs, flip_cs, clr_int;
+            txtx_cs, scrax_cs, scrbx_cs, objy_cs, flip_cs, clr_int,
+            mcu_rd,  mcu_wr;
 reg  [15:0] cpu_din, cab_dout;
-wire [15:0] cpu_dout;
+wire [15:0] cpu_dout, wf_lut;
 wire        bus_cs, bus_busy, intn, short_en, long_en;
 
 `ifdef SIMULATION
@@ -96,6 +98,7 @@ assign obj_we   = {2{obj_cs &~RnW}} & ~{UDSn,LDSn};
 assign pal_we   = {2{pal_cs &~RnW}} & ~{UDSn,LDSn};
 assign short_en = A[3];
 assign long_en  = A[2];
+assign wf_lut[15:8] = 0;
 
 always @* begin
     rom_cs  = !ASn  && A[19:16]<=   3;
@@ -116,7 +119,9 @@ always @* begin
     scrby_cs = regs_cs && A[9:8]==3 && ^A[3:2];
     scrbx_cs = regs_cs && A[9:8]==3 && &A[3:2];
 
+    mcu_rd   = cab_cs  &&  RnW && A[11:8]==0 && A[3:2]==1 && A[1];
     nmi_set  = cab_cs  && !RnW && A[11] && A[3:1]==1;
+    mcu_wr   = cab_cs  && !RnW && A[11] && A[3:1]==2;
     clr_int  = cab_cs  && !RnW && A[11] && A[3:1]==3;
     flip_cs  = cab_cs  && !RnW && A[11] && A[3:1]==4;
 end
@@ -138,6 +143,7 @@ always @(posedge clk) begin
                scrb_cs ? mb_dout  :
                obj_cs  ? mo_dout  :
                pal_cs  ? mp_dout  :
+               mcu_rd  ? wf_lut   :
                cab_cs  ? cab_dout : 16'h0;
 end
 
@@ -199,6 +205,15 @@ jtgaiden_scroll_adder u_scrb_y(
     .short_en   ( short_en      ),
     .long_en    ( long_en       ),
     .scroll     ( scrb_y        )
+);
+
+jtgaiden_mcu_emu u_mcu_emu(
+    .rst        ( rst           ),
+    .clk        ( clk           ),
+    .we         ( mcu_wr        ),
+    .mcutype    ( mcutype       ),
+    .din        ( cpu_dout[15:8]),
+    .dout       ( wf_lut[7:0]   )
 );
 
 jtframe_edge #(.QSET(0))u_vbl(

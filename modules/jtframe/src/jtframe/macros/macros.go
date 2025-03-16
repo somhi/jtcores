@@ -29,8 +29,8 @@ import (
 	"strings"
 	"time"
 
-    "github.com/jotego/jtframe/betas"
-    . "github.com/jotego/jtframe/common"
+    "jotego/jtframe/betas"
+    . "jotego/jtframe/common"
 )
 
 // returns true if the .def file section changes
@@ -54,6 +54,76 @@ func extract_section( line string, target string, section *string ) (bool,error)
 	return true, nil
 }
 
+func target_uses_dipbase( target string ) bool {
+	switch( target ) {
+	case "mist","sidi","neptuno","mc2","mcp": return true
+	default: return false
+	}
+}
+
+func check_integer(all_names... string) error{
+	for _,name := range all_names {
+		if !IsInt(name)  {
+			value := "Empty string found."
+			if v:=Get(name);v!="" {
+				value = "Found "+v
+			}
+			return fmt.Errorf("%s must be an integer. %s",name, value )
+		}
+	}
+	return nil
+}
+
+func str2macro( a string ) string {
+	re := regexp.MustCompile("^[0-9]")
+	if re.MatchString(a) {
+		a = "_" + a
+	}
+	return strings.ToUpper(a)
+}
+
+func MakeMacros(core, target string, extra... string) {
+	macros = make(map[string]string)
+	if len(extra)>0 {
+		AddKeyValPairs(extra...)
+	}
+	read_target_macros(target)
+	add_credits_for_releases(core) // credits must come before parse_def
+	core_def := ConfigFilePath(core,"macros.def")
+	parse_def(core_def, target)
+	mem_managed := is_mem_managed(core)
+	set_separator(target)
+	// Adds a macro with the target name
+	Set(target,"1")
+	// Adds the CORENAME if missing. This macro is expected to exist in macros.def
+	if !IsSet("CORENAME") {
+		fmt.Fprintf(os.Stderr, "CORENAME not specified in cfg/macros.def. Defaults to %s\n", core)
+	}
+	// Memory templates require JTFRAME_MEMGEN
+	if mem_managed {
+		Set("JTFRAME_MEMGEN","")
+	}
+	make_commit_macro()
+	fill_defaults(core, target)
+	make_gametop_macro()
+	if IsSet("JTFRAME_VERTICAL") {
+		Set("MISTER_FB","")
+	}
+	prepare_input_record()
+	clean_osd_macro()
+	check_colorw()
+	mclk := make_clocks(target)
+	add_subcarrier_clk( int64(mclk) )
+	make_beta_macros(core, target)
+}
+
+func read_target_macros( target string ) {
+	fname := filepath.Join(os.Getenv("JTFRAME"), "target", target, "target.def")
+	if FileExists(fname) {
+		parse_def(fname, target)
+	}
+}
+
 func parse_def(path string, target string) {
 	if path == "" {
 		return
@@ -67,7 +137,7 @@ func parse_def(path string, target string) {
 	scanner.Split(bufio.ScanLines)
 	section := target
 	linecnt := 0
-	release := IsSet("JTFRAME_RELEASE")
+	release := IsSet(JTFRAME_RELEASE)
 	for scanner.Scan() {
 		linecnt++
 		line := strings.TrimSpace(scanner.Text())
@@ -142,132 +212,6 @@ func parse_def(path string, target string) {
 	return
 }
 
-// check incompatible macro settings
-func CheckMacros() error {
-	// Check that MiST DIPs are defined after the
-	// last used status bit
-	dipbase, _ := strconv.Atoi(Get("JTFRAME_DIPBASE"))
-	if target_uses_dipbase(Get("TARGET")) {
-		if IsSet("JTFRAME_AUTOFIRE0") && dipbase < 17 {
-			return fmt.Errorf("MiST DIP base is smaller than the required value by JTFRAME_AUTOFIRE0")
-		}
-		if IsSet("JTFRAME_OSD_TEST") && dipbase < 11 {
-			return fmt.Errorf("MiST DIP base is smaller than the required value by JTFRAME_OSD_TEST")
-		}
-	}
-	if IsSet("JTFRAME_LF_BUFFER") && IsSet("JTFRAME_MR_DDRLOAD") {
-		return fmt.Errorf("jtframe: cannot define both JTFRAME_LF_BUFFER and JTFRAME_MR_DDRLOAD")
-	}
-	// sim macros
-	maxframe_str   := Get("MAXFRAME")
-	dumpstart_str  := Get("DUMP_START")
-	maxframe, _ := strconv.Atoi(maxframe_str)
-	dumpstart,_ := strconv.Atoi(dumpstart_str)
-	if dumpstart > maxframe {
-		return fmt.Errorf("Set a frame start for dumping within the simulation range")
-	}
-	if IsSet("JTFRAME_HEADER") && !IsInt("JTFRAME_HEADER") {
-		header := Get("JTFRAME_HEADER")
-		return fmt.Errorf("Cannot parse JTFRAME_HEADER=%s\n", header )
-	}
-	if e:=check_integer("JTFRAME_WIDTH","JTFRAME_HEIGHT"); e!=nil {
-		return e
-	}
-	return nil
-}
-
-
-func target_uses_dipbase( target string ) bool {
-	switch( target ) {
-	case "mist","sidi","neptuno","mc2","mcp": return true
-	default: return false
-	}
-}
-
-func check_integer(all_names... string) error{
-	for _,name := range all_names {
-		if !IsInt(name)  {
-			value := "Empty string found."
-			if v:=Get(name);v!="" {
-				value = "Found "+v
-			}
-			return fmt.Errorf("%s must be an integer. %s",name, value )
-		}
-	}
-	return nil
-}
-
-func str2macro( a string ) string {
-	re := regexp.MustCompile("^[0-9]")
-	if re.MatchString(a) {
-		a = "_" + a
-	}
-	return strings.ToUpper(a)
-}
-
-func MakeMacros(core, target string) {
-	macros = make(map[string]string)
-	read_target_macros(target)
-	core_def := ConfigFilePath(core,"macros.def")
-	parse_def(core_def, target)
-	mem_managed := is_mem_managed(core)
-	set_separator(target)
-	// Adds a macro with the target name
-	Set(target,"1")
-	// Adds the CORENAME if missing. This macro is expected to exist in macros.def
-	if !IsSet("CORENAME") {
-		fmt.Fprintf(os.Stderr, "CORENAME not specified in cfg/macros.def. Defaults to %s\n", core)
-	}
-	// Memory templates require JTFRAME_MEMGEN
-	if mem_managed {
-		Set("JTFRAME_MEMGEN","")
-	}
-	// Macros with default values
-	year, month, day := time.Now().Date()
-	make_commit_macro()
-	defaul_values := map[string]string{
-		str2macro(core): "",				// the core is always set
-		"JTFRAME_180SHIFT":	     "0",
-		"JTFRAME_ARX":           "4",
-		"JTFRAME_ARY":           "3",
-		"JTFRAME_BUTTONS":       "2",
-		"JTFRAME_COLORW":        "4",
-		"JTFRAME_CREDITS_PAGES": "3",
-		"JTFRAME_DEBUG_VPOS":    "4",
-		"JTFRAME_DIALEMU_LEFT":  "5",
-		"JTFRAME_DIPBASE":      "16",
-		"JTFRAME_SHIFT":	     "0",
-		"JTFRAME_SIGNED_SND":    "1",
-		"JTFRAME_TIMESTAMP":fmt.Sprintf("%d", time.Now().Unix()),
-		"CORENAME": core,
-		"DATE": fmt.Sprintf("%d%02d%02d", year%100, month, day),
-		"TARGET": target,
-	}
-	for key,val := range defaul_values {
-		if !IsSet(key) {
-			Set(key, val)
-		}
-	}
-	make_gametop_macro()
-	// for JTFRAME_VERTICAL define MISTER_FB
-	if IsSet("JTFRAME_VERTICAL") {
-		Set("MISTER_FB","")
-	}
-	prepare_input_record()
-	clean_osd_macro()
-	check_colorw()
-	mclk := make_clocks(target)
-	add_subcarrier_clk( int64(mclk) )
-	make_beta_macros(core, target)
-}
-
-func read_target_macros( target string ) {
-	fname := filepath.Join(os.Getenv("JTFRAME"), "target", target, "target.def")
-	if FileExists(fname) {
-		parse_def(fname, target)
-	}
-}
-
 func is_mem_managed(corename string) bool {
 	f, e := os.Open( filepath.Join(os.Getenv("CORES"), corename,"cfg","mem.yaml"))
 	f.Close()
@@ -293,6 +237,43 @@ func make_commit_macro() {
 	as_int, _ := strconv.ParseInt(commit,16,64)
 	as_dec := fmt.Sprintf("%d",as_int)
 	Set("JTFRAME_COMMIT_DEC",as_dec)
+}
+
+func fill_defaults(core, target string) {
+	year, month, day := time.Now().Date()
+	defaul_values := map[string]string{
+		str2macro(core): "",				// the core is always set
+		"JTFRAME_180SHIFT":	     "0",
+		"JTFRAME_ARX":           "4",
+		"JTFRAME_ARY":           "3",
+		"JTFRAME_BUTTONS":       "2",
+		"JTFRAME_COLORW":        "4",
+		"JTFRAME_CREDITS_PAGES": "3",
+		"JTFRAME_DEBUG_VPOS":    "4",
+		"JTFRAME_DIALEMU_LEFT":  "5",
+		"JTFRAME_DIPBASE":      "16",
+		"JTFRAME_SHIFT":	     "0",
+		"JTFRAME_SIGNED_SND":    "1",
+		"JTFRAME_TIMESTAMP":fmt.Sprintf("%d", time.Now().Unix()),
+		"CORENAME": core,
+		"DATE": fmt.Sprintf("%d%02d%02d", year%100, month, day),
+		"TARGET": target,
+	}
+	for key,val := range defaul_values {
+		if !IsSet(key) {
+			Set(key, val)
+		}
+	}
+}
+
+func add_credits_for_releases(core string) {
+	if !IsSet(JTFRAME_RELEASE) {
+		return
+	}
+	msgpath := ConfigFilePath(core,"msg")
+	if FileExists(msgpath) {
+		Set(JTFRAME_CREDITS,"1")
+	}
 }
 
 // Derives the GAMETOP module from the CORENAME if unspecified

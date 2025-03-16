@@ -23,17 +23,20 @@ module jtflstory_game(
 wire        ghflip, gvflip, m2s_wr, s2m_rd, bus_a0, scr_flen, clip,
             no_used, // noise used
             mcu_ibf, mcu_obf, busrq_n, busak_n, c2b_we, c2b_rd, b2c_rd, b2c_wr;
-wire [15:0] c2b_addr, bus_addr;
+wire [15:0] c2b_addr;
 wire [ 7:0] bus_din, s2m_data, st_snd, sub_din, sub_dout,
             c2b_dout, cpu_dout, mcu2bus;
 reg  [ 7:0] st_mux;
 reg  [ 1:0] coin_eff;
-wire [ 1:0] pal_bank, scr_bank, bankcfg;
+wire [ 1:0] pal_bank, scr_bank, bankcfg, sha_hi;
 wire        mute, mirror, mcu_enb, coinxor, gfxcfg, priocfg, sub_en, dec_en,
-            palwcfg, cabcfg, objcfg, iocfg, osdflip_en,
-            subsh_cs,sub_wr_n, sub_wait, sub_rd_n, sub_busrq_n, sub_rstn;
+            palwcfg, cabcfg, objcfg, iocfg, osdflip_en, psg2_en, large_sha,
+            subsh_cs,sub_wr_n, sub_wait, sub_rd_n, sub_busrq_n, sub_rstn,
+            snd_ibf, snd_obf;
 reg         mcu_rst, osdflip;
 
+assign sha_addr   = {sha_hi,  bus_addr[10:0]};
+assign sha_hi     = large_sha ? bus_addr[12:11] : 2'd0;
 assign bus_a0     = bus_addr[0];
 assign dip_flip   = gvflip | ghflip;
 assign ioctl_din  = {mute,scr_flen, gvflip, ghflip, pal_bank, scr_bank};
@@ -42,7 +45,7 @@ assign debug_view = st_mux;
 localparam OSDFLIP_BIT=24;
 
 always @(posedge clk) begin
-    st_mux  <= debug_bus[7] ? st_snd : {1'd0,clip,no_used,mute,gfxcfg,mirror,gvflip,ghflip};
+    st_mux  <= debug_bus[7] ? st_snd : {1'b0,clip,no_used,mute,gfxcfg,mirror,gvflip,ghflip};
     osdflip <= osdflip_en & dipsw[OSDFLIP_BIT];
 end
 
@@ -64,6 +67,8 @@ jtflstory_header u_header (
     .sub      ( sub_en          ),
     .dec      ( dec_en          ),
     .banks    ( bankcfg         ),
+    .psg2_en  ( psg2_en         ),
+    .ramcfg   ( large_sha       ),
     .iocfg    ( iocfg           )
 );
 
@@ -96,7 +101,6 @@ jtflstory_main u_main(
     .sub_cs     ( subsh_cs  ),
     .sub_wr_n   ( sub_wr_n  ),
     .sub_rd_n   ( sub_rd_n  ),
-    .sub_din    ( sub_din   ),
     .sub_dout   ( sub_dout  ),
     .sub_wait   ( sub_wait  ),
     .sub_busrq_n(sub_busrq_n),
@@ -119,6 +123,8 @@ jtflstory_main u_main(
     .m2s_wr     ( m2s_wr    ),
     .s2m_rd     ( s2m_rd    ),
     .s2m_data   ( s2m_data  ),
+    .snd_ibf    ( snd_ibf   ),
+    .snd_obf    ( snd_obf   ),
     // video memories
     .pal16_we   ( pal16_we  ),
     .pal16_dout ( pal16_dout),
@@ -137,6 +143,8 @@ jtflstory_main u_main(
     .coin       ( coin_eff  ),
     .joystick1  ( joystick1 ),
     .joystick2  ( joystick2 ),
+    .gun_x      ( gun_1p_x  ),
+    .gun_y      ( gun_1p_y  ),
     .dipsw      (dipsw[23:0]),
     .service    ( service   ),
     .tilt       ( tilt      ),
@@ -153,8 +161,7 @@ jtflstory_main u_main(
 jtflstory_sub u_sub(
     .rst        ( rst       ),
     .clk        ( clk       ),
-    // .enable     ( sub_en    ),
-    .enable     ( 1'b0      ),
+    .enable     ( sub_en    ),
     .cen        ( cen_5p3   ),
     .lvbl       ( LVBL      ),       // video interrupt
     .nmi_n      ( 1'b1      ),
@@ -162,12 +169,12 @@ jtflstory_sub u_sub(
     .dip_pause  ( dip_pause ),
 
     .bus_rstn   ( sub_rstn  ),
-    .bus_addr   ( sub_addr  ),
     .bus_cs     ( subsh_cs  ),
-    .bus_wr_n   ( sub_wr_n  ),
-    .bus_rd_n   ( sub_rd_n  ),
-    .bus_din    ( sub_dout  ),
-    .bus_dout   ( sub_din   ),
+    .addr       ( sub_addr  ),
+    .wr_n       ( sub_wr_n  ),
+    .rd_n       ( sub_rd_n  ),
+    .dout       ( sub_dout  ),
+    .bus_din    ( bus_din   ),
     .bus_wait   ( sub_wait  ),
     .busrq_n    (sub_busrq_n),
 
@@ -176,7 +183,7 @@ jtflstory_sub u_sub(
     .rom_data   ( sub_data  ),
     .rom_ok     ( sub_ok    )
 );
-
+/* verilator tracing_off */
 jtflstory_mcu u_mcu(
     .rst        ( mcu_rst   ),
     .clk        ( clk       ),
@@ -210,12 +217,15 @@ jtflstory_sound u_sound(
     .cen2       ( cen2      ),
     .cen48k     ( cen48k    ),
 
+    .psg2_en    ( psg2_en   ),
     // communication with the other CPUs
     .bus_wr     ( m2s_wr    ),
     .bus_rd     ( s2m_rd    ),
     .bus_a0     ( bus_a0    ),
     .bus_dout   ( bus_dout  ),
     .bus_din    ( s2m_data  ),
+    .obf        ( snd_obf   ),
+    .ibf        ( snd_ibf   ),
 
     .rom_addr   ( snd_addr  ),
     .rom_data   ( snd_data  ),
@@ -226,6 +236,7 @@ jtflstory_sound u_sound(
     .mute       ( mute      ),
     .msm        ( msm       ),
     .psg        ( psg       ),
+    .psg2       ( psg2      ),
     .dac        ( dac       ),
     // debug
     .debug_bus  ( debug_bus ),

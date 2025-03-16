@@ -28,3 +28,11 @@ type MAMEState struct{
 	alias mameAlias
 	ram []byte
 }
+
+type mameAlias map[string]*VCDSignal
+type NameValue map[string]uint64
+
+func (st MAMEState)validate(name string) bool {
+    _, valid := st.data[name]
+    return valid
+}

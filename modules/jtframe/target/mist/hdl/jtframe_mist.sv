@@ -166,6 +166,9 @@ module jtframe_mist #(parameter
     output      [15:0] mouse_1p, mouse_2p,
     output      [ 1:0] mouse_strobe,
 
+    // Lightguns
+    output      [ 8:0] gun_1p_x, gun_1p_y, gun_2p_x, gun_2p_y,
+
     // DIP and OSD settings
     output             dip_test,
     // non standard:
@@ -364,6 +367,8 @@ jtframe_board #(
     .clk_rom        ( clk_rom         ),
     .clk_pico       ( clk_pico        ),
     .core_mod       ( core_mod        ),
+    .vertical       (                 ),
+    .black_frame    (                 ),
     // Sound
     .snd_lin        ( snd_left        ),
     .snd_rin        ( snd_right       ),
@@ -399,19 +404,6 @@ jtframe_board #(
     .dial_y         ( dial_y          ),
     .spinner_1      ( 9'd0            ),
     .spinner_2      ( 9'd0            ),
-    // keyboard
-    .board_digit    ( 8'd0            ),
-    .board_gfx      ( 4'd0            ),
-    .board_reset    ( 1'b0            ),
-    .board_pause    ( 1'b0            ),
-    .board_tilt     ( 1'b0            ),
-    .board_test     ( 1'b0            ),
-    .board_service  ( 1'b0            ),
-    .board_shift    ( 1'b0            ),
-    .board_ctrl     ( 1'b0            ),
-    .board_alt      ( 1'b0            ),
-    .board_plus     ( 1'b0            ),
-    .board_minus    ( 1'b0            ),
     // Mouse & paddle
     .bd_mouse_dx    ( bd_mouse_dx     ),
     .bd_mouse_dy    ( bd_mouse_dy     ),
@@ -426,6 +418,11 @@ jtframe_board #(
     .mouse_1p       ( mouse_1p        ),
     .mouse_2p       ( mouse_2p        ),
     .mouse_strobe   ( mouse_strobe    ),
+    // Lightguns
+    .gun_1p_x       ( gun_1p_x        ),
+    .gun_1p_y       ( gun_1p_y        ),
+    .gun_2p_x       ( gun_2p_x        ),
+    .gun_2p_y       ( gun_2p_y        ),
     // DIP and OSD settings
     .status         ( board_status    ),
     .dipsw          ( dipsw[23:0]     ),

@@ -150,7 +150,9 @@ jt{{if .Game}}{{.Game}}{{else}}{{.Core}}{{end}}_game u_game(
     .coin     ( coin    ),
     .joystick1    ( joystick1        ), .joystick2    ( joystick2        ),
     .joystick3    ( joystick3        ), .joystick4    ( joystick4        ), `ifdef JTFRAME_MOUSE
-    .mouse_1p     ( mouse_1p         ), .mouse_2p     ( mouse_2p         ), .mouse_strobe ( mouse_strobe ), `endif `ifdef JTFRAME_SPINNER
+    .mouse_1p     ( mouse_1p         ), .mouse_2p     ( mouse_2p         ), .mouse_strobe ( mouse_strobe ), `endif `ifdef JTFRAME_LIGHTGUN
+    .gun_1p_x     ( gun_1p_x         ), .gun_1p_y     ( gun_1p_y         ),
+    .gun_2p_x     ( gun_2p_x         ), .gun_2p_y     ( gun_2p_y         ), `endif `ifdef JTFRAME_SPINNER
     .spinner_1p   ( spinner_1p       ), .spinner_2p   ( spinner_2p       ), `endif
     .joyana_l1    ( joyana_l1        ), .joyana_l2    ( joyana_l2        ),
     .joyana_l3    ( joyana_l3        ), .joyana_l4    ( joyana_l4        ),
@@ -381,22 +383,7 @@ assign ba{{$index}}_din  = 0;
 localparam JTFRAME_PROM_START=`JTFRAME_PROM_START;
 `endif
 {{ range $cnt, $bus:=.BRAM -}}
-{{- if $bus.Prom }}
-wire {{addr_range .}} {{$bus.Name}}_pa;
-assign {{$bus.Name}}_pa = raw_addr{{addr_range .}}-JTFRAME_PROM_START{{addr_range .}};
-jtframe_prom #(
-    .DW({{$bus.Data_width}}),
-    .AW({{$bus.Addr_width}}){{ if $bus.Sim_file }},
-    .SIMFILE("{{$bus.Name}}.bin"){{end}}
-) u_prom_{{$bus.Name}}(
-    .clk        ( clk           ),
-    .cen        ( 1'b1          ),
-    .data       ( raw_data{{data_range .}}),
-    .rd_addr    ( {{$bus.Addr}} ),
-    .wr_addr    ( {{$bus.Name}}_pa ),
-    .we         ( prom_we       ),
-    .q          ( {{$bus.Name}}_data )
-);
+{{- if $bus.Prom }}{{template "prom_dwnld.v" $bus}}
 {{- else if $bus.Dual_port.Name }}
 // Dual port BRAM for {{$bus.Name}} and {{$bus.Dual_port.Name}}
 jtframe_dual_ram{{ if eq $bus.Data_width 16 }}16{{end}} #(
@@ -457,36 +444,7 @@ jtframe_ram{{ if eq $bus.Data_width 16 }}16{{end}} #(
 {{ end }}{{end}}
 
 {{- if .Ioctl.Dump }}
-`ifndef JTFRAME_SIM_IODUMP /* verilator tracing_off */ `endif
-jtframe_ioctl_dump #(
-    {{- $first := true}}
-    {{- range $k, $v := .Ioctl.Buses }}
-    {{- if $first}}{{$first = false}}{{else}},{{end}}
-    .DW{{$k}}( {{$v.DW}} ), .AW{{$k}}( {{$v.AW}} ){{end}}
-) u_dump (
-    .clk       ( clk        ),
-    {{- range $k, $v := .Ioctl.Buses }}
-    // dump {{$k}}
-    .dout{{$k}}        ( {{$v.Dout}} ),
-    .addr{{$k}}        ( {{$v.A}} ),
-    .addr{{$k}}_mx     ( {{$v.Amx}} ),
-    // restore
-    .din{{$k}}         ( {{$v.Din}} ),
-    .din{{$k}}_mx      ( {{with $v.Name}}{{.}}_dimx{{end}} ),
-    .we{{$k}}          ( {{if eq $v.DW 8 }}{ 1'b0,{{ $v.We }} }{{else}}{{$v.We}}{{end}}),
-    .we{{$k}}_mx       ( {{with $v.Name}}{{.}}_wemx{{end}} ),
-    {{end }}
-    .ioctl_addr ( ioctl_addr[23:0] ),
-    .ioctl_ram  ( ioctl_ram ),
-    .ioctl_aux  ( ioctl_aux ),
-    .ioctl_wr   ( ioctl_wr  ),
-`ifdef JTFRAME_IOCTL_RD
-    .ioctl_din  ( ioctl_din ),
-`else
-    .ioctl_din  (           ),
-`endif
-    .ioctl_dout ( ioctl_dout)
-);
+{{ template "ioctl_dump.v" .Ioctl }}
 {{ end }}
 
 {{ if .Clocks }}

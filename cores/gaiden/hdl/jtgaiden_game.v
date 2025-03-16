@@ -20,30 +20,40 @@ module jtgaiden_game(
     `include "jtframe_game_ports.inc" // see $JTFRAME/hdl/inc/jtframe_game_ports.inc
 );
 
-wire        nmi_set, flip, pre_ramwe;
+wire        nmi_set, flip, pre_ramwe, objdly, mcutype, vsize_en;
+wire [ 1:0] frmbuf_en;
 wire [ 7:0] snd_cmd, obj_y, vregs;
 wire [15:0] txt_x, txt_y, scra_x, scra_y, scrb_x, scrb_y;
 
 assign dip_flip  = flip;
 assign ioctl_din = vregs;
-assign debug_view= 0;
+assign debug_view= {5'd0,objdly,frmbuf_en};
 assign ram_addr  = main_addr[13:1];
 
-`ifdef SMALL_BRAM
-assign ram_we = pre_ramwe;
-`else
 wire [1:0] ram_dsn;
 wire [15:0] ram_data = ram_dout;
 wire ram_cs, ram_ok, ramcs_l;
 assign ram_we = {2{pre_ramwe}} & ~ram_dsn;
 assign ram_ok = ramcs_l | ~ram_cs;
 jtframe_sh #(.W(1),.L(2)) u_sh(clk,1'b1,ram_cs,ramcs_l);
-`endif
+
+jtgaiden_header u_header (
+    .clk      ( clk             ),
+    .header   ( header          ),
+    .prog_we  ( prog_we         ),
+    .prog_addr( prog_addr[2:0]  ),
+    .prog_data( prog_data       ),
+    .frmbuf   ( frmbuf_en       ),
+    .objdly   ( objdly          ),
+    .mcutype  ( mcutype         ),
+    .vsize_en ( vsize_en        )
+);
 
 jtgaiden_main u_main(
     .rst        ( rst       ),
     .clk        ( clk       ),
     .LVBL       ( LVBL      ),
+    .mcutype    ( mcutype   ),
 
     .main_addr  ( main_addr ),
     .main_dout  ( ram_din   ),
@@ -104,6 +114,9 @@ jtgaiden_video u_video(
     .HS         ( HS        ),
     .VS         ( VS        ),
     .flip       ( flip      ),
+    .frmbuf_en  ( frmbuf_en ),
+    .objdly     ( objdly    ),
+    .vsize_en   ( vsize_en  ),
 
     // scroll registers
     .txt_y      ( txt_y     ),
