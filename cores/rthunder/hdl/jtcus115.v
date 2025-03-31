@@ -14,12 +14,30 @@
 
     Author: Jose Tejada Gomez. Twitter: @topapate
     Version: 1.0
-    Date: 15-3-2025 */
+    Date: 29-3-2025 */
 
-// memory address decoder for sound CPU (cpu2 in MAME)
-module jtrthunder_cus41(
-    input               rst,
-    input               clk,
+module jtcus115(
+    input         rst,
+    input         clk,
+    input         cs,
+    input  [15:0] addr,
+    input  [ 7:0] din,
+    output [ 4:0] banksel
 );
 
-endmodule
+wire banksel_cs;
+wire [3:0] asel;
+
+assign asel       = addr[12:9];
+assign banksel_cs = asel==4 && cs;
+
+jtframe_mmr_reg #(.W(5)) u_mbank(
+    .rst        ( rst       ),
+    .clk        ( clk       ),
+    .wr_n       ( 1'b0      ),
+    .din        ( din[4:0]  ),
+    .cs         ( banksel_cs),
+    .dout       ( banksel   )
+);
+
+endmodule    

@@ -20,21 +20,42 @@ module jtrthunder_game(
     `include "jtframe_game_ports.inc" // see $JTFRAME/hdl/inc/jtframe_game_ports.inc
 );
 
-wire [15:0] fave;
-wire [ 2:0] busy;
+wire [15:0] fave, maddr;
+wire [ 1:0] busy;
 reg  [ 7:0] dbg_mux;
+wire [ 7:0] backcolor, st_main, mdout, c30_dout;
+wire [ 8:0] scr0x, scr0y, scr1x, scr1y;
+wire        cen_main, cen_sub, cen_mcu, flip, mmr0_cs, mmr1_cs, brnw, tile_bank,
+            mrnw, bsel, mc30_cs;
+// Configuration through MRA header
+wire        scr2bpp, sndext_en;
 
-assign debug_view= dbg_mux;
+assign debug_view = dbg_mux;
+assign dip_flip   = flip;
+
+assign flip = 0;
+assign pcm_cs=0, pcm_addr=0, pcm=0;
 
 always @* begin
     case( debug_bus[7:6] )
         // 0: dbg_mux = { 3'd0, mcu_halt, 3'd0, ~srst_n };
         // 1: dbg_mux = st_video;
-        // 2: dbg_mux = st_main;
+        2: dbg_mux = st_main;
         3: dbg_mux = debug_bus[0] ? fave[7:0] : fave[15:8]; // average CPU frequency (BCD format)
         default: dbg_mux = 0;
     endcase
 end
+
+jtrthunder_header u_header(
+    .clk        ( clk       ),
+    .header     ( header    ),
+    .prog_we    ( prog_we   ),
+
+    .scr2bpp    ( scr2bpp   ),
+    .sndext_en  ( sndext_en ),
+    .prog_addr  ( prog_addr[2:0] ),
+    .prog_data  ( prog_data )
+);
 
 jtrthunder_cenloop u_cen(
     .rst        ( rst       ),
@@ -47,6 +68,186 @@ jtrthunder_cenloop u_cen(
 
     .fave       ( fave      ),
     .fworst     (           )
+);
+
+jtrthunder_main u_main(
+    .rst        ( rst       ),
+    .clk        ( clk       ),
+    .cen_main   ( cen_main  ),
+    .cen_sub    ( cen_sub   ),
+    .lvbl       ( LVBL      ),
+
+    .backcolor  ( backcolor ),
+    .tile_bank  ( tile_bank ),
+
+    // ROM
+    .mrom_cs    ( main_cs   ),
+    .mrom_ok    ( main_ok   ),
+    .mrom_addr  ( main_addr ),
+    .mrom_data  ( main_data ),
+
+    .srom_cs    ( snd_cs    ),
+    .srom_ok    ( snd_ok    ),
+    .srom_addr  ( snd_addr  ),
+    .srom_data  ( snd_data  ),
+
+    .ext_cs     ( ext_cs    ),
+    .ext_ok     ( ext_ok    ),
+    .ext_addr   ( ext_addr  ),
+    .ext_data   ( ext_data  ),
+    .sndext_en  ( sndext_en ),
+
+    .bus_busy   ( busy[0]   ),
+
+    // VRAM
+    .baddr      ( baddr     ),
+    .bdout      ( bdout     ),
+    .scr0_dout  (vram0_dout ),
+    .scr1_dout  (vram1_dout ),
+    .oram_dout  ( oram_dout ),
+    .scr0_we    ( sh0_we    ),
+    .scr1_we    ( sh1_we    ),
+    .oram_we    ( osh_we    ),
+    .brnw       ( brnw      ),
+
+    .latch0_cs  ( mmr0_cs   ),
+    .latch1_cs  ( mmr1_cs   ),
+
+    // CUS30
+    .bsel       ( bsel      ),
+    .c30_dout   ( c30_dout  ),
+    .mc30_cs    ( mc30_cs   ),
+    .mrnw       ( mrnw      ),
+    .maddr      ( maddr     ),
+    .mdout      ( mdout     ),
+
+    .debug_bus  ( debug_bus ),
+    .st_dout    ( st_main   )
+);
+
+jtrthunder_sound u_sound(
+    .rst        ( rst       ),
+    .clk        ( clk       ),
+    .cen_mcu    ( cen_mcu   ),
+    .cen_fm     ( cen_fm    ),
+    .cen_fm2    ( cen_fm2   ),
+
+    .lvbl       ( LVBL      ),
+
+    .dipsw      ( dipsw[15:0]),
+    .joystick1  (joystick1[6:0]),
+    .joystick2  (joystick2[6:0]),
+    .cab_1p     ( cab_1p[1:0]),
+    .coin       ( coin[1:0] ),
+    .service    ( service   ),
+
+    // sub 6809 connection to CUS30
+    .bsel       ( bsel      ),
+    .c30_dout   ( c30_dout  ),
+    .mc30_cs    ( mc30_cs   ),
+    .mrnw       ( mrnw      ),
+    .maddr      ( maddr[9:0]),
+    .mdout      ( mdout     ),
+
+    .ram_addr   (sndram_addr),
+    .ram_dout   (sndram_dout),
+    .ram_we     (sndram_we  ),
+    .ram_din    (sndram_din ),
+
+    .embd_addr  ( mcu_addr  ),
+    .embd_data  ( mcu_data  ),
+
+    .rom_cs     (mcusub_cs  ),
+    .rom_ok     (mcusub_ok  ),
+    .rom_addr   (mcusub_addr),
+    .rom_data   (mcusub_data),
+    .bus_busy   ( busy[1]   ),
+
+    .fm_l       ( fm_l      ),
+    .fm_r       ( fm_r      ),
+    .cus30_l    ( cus30_l   ),
+    .cus30_r    ( cus30_r   ),
+    .debug_bus  ( debug_bus )
+);
+
+jtrthunder_video u_video(
+    .rst        ( rst       ),
+    .clk        ( clk       ),
+    .pxl_cen    ( pxl_cen   ),
+    .pxl2_cen   ( pxl2_cen  ),
+    .flip       ( flip      ),
+    .backcolor  ( backcolor ),
+    .bank       ( tile_bank ),
+
+    .lvbl       ( LVBL      ),
+    .lhbl       ( LHBL      ),
+    .hs         ( HS        ),
+    .vs         ( VS        ),
+
+    .mmr0_cs    ( mmr0_cs   ),
+    .mmr1_cs    ( mmr1_cs   ),
+    .rnw        ( brnw      ),
+    .cpu_dout   ( bdout     ),
+    .cpu_addr   ( baddr     ),
+
+    // Tile ROM decoder PROM
+    .vram0_addr ( vram0_addr),
+    .vram1_addr ( vram1_addr),
+    .vram0_dout ( vram0_dout),
+    .vram1_dout ( vram1_dout),
+    .dec0_addr  ( dec0_addr ),
+    .dec1_addr  ( dec1_addr ),
+    .dec0_data  ( dec0_data ),
+    .dec1_data  ( dec1_data ),
+
+    .oram_addr  ( oram_addr ),
+    .oram_dout  ( oram_dout ),
+
+    // ROMs
+    .obj_cs     ( obj_cs    ),
+    .obj_addr   ( obj_addr  ),
+    .obj_data   ( obj_data  ),
+    .obj_ok     ( obj_ok    ),
+
+    .scr0a_cs   ( scr0a_cs  ),
+    .scr0a_addr ( scr0a_addr),
+    .scr0a_data ( scr0a_data),
+    .scr0a_ok   ( scr0a_ok  ),
+
+    .scr0b_cs   ( scr0b_cs  ),
+    .scr0b_addr ( scr0b_addr),
+    .scr0b_data ( scr0b_data),
+    .scr0b_ok   ( scr0b_ok  ),
+
+    .scr1a_cs   ( scr1a_cs  ),
+    .scr1a_addr ( scr1a_addr),
+    .scr1a_data ( scr1a_data),
+    .scr1a_ok   ( scr1a_ok  ),
+
+    .scr1b_cs   ( scr1b_cs  ),
+    .scr1b_addr ( scr1b_addr),
+    .scr1b_data ( scr1b_data),
+    .scr1b_ok   ( scr1b_ok  ),
+
+    // Palette PROMs
+    .objpal_addr(objpal_addr),
+    .objpal_data(objpal_data),
+
+    .scrpal_addr(scrpal_addr),
+    .scrpal_data(scrpal_data),
+
+    .rgb_addr   ( rgb_addr  ),
+    .rg_data    ( rgpal_data),
+    .b_data     ( bpal_data[3:0] ),
+    .red        ( red       ),
+    .green      ( green     ),
+    .blue       ( blue      ),
+    // Debug
+    .ioctl_din  ( ioctl_din ),
+    .ioctl_addr ( ioctl_addr[4:0] ),
+    .gfx_en     ( gfx_en    ),
+    .debug_bus  ( debug_bus )
+    // output reg [ 7:0] st_dout
 );
 
 endmodule

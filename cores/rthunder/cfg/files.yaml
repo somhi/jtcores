@@ -10,6 +10,7 @@ jtframe:
   - get:
       - jtframe_ff.v
       - jtframe_bcd_cnt.v
+      - jtframe_mmr_reg.v
   - from: cpu
     get:
       - mc6809i.v
@@ -23,4 +24,8 @@ jtframe:
       - jtframe_vtimer.v
       - jtframe_linebuf.v
       - jtframe_obj.yaml
+      - jtframe_scroll.yaml
+  - from: ram
+    get:
+      - jtframe_ram_rdmux.v
 jt51:

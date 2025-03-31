@@ -121,6 +121,8 @@ type RegCfg struct {
     Sequence   []int    // File sequence, where the first file is identified with a 0, the next with 1 and so on
     // ROM files can be repeated or omitted in the sequence
     Frac struct {
+        // take n bytes from each part (1 part=1 file)
+        // files=multiple of parts
         Bytes, Parts int
     }
     Overrules []struct { // Overrules the region settings for specific files
@@ -132,11 +134,13 @@ type RegCfg struct {
         // Machine, Setname string // Optional filters
         Dev string // Device name for assembler
     }
-    Parts []struct {
-        Name, Crc, Map  string
-        Length, Offset int
-    }
+    Parts []RegParts
     Files []MameROM // This replaces the information in mame.xml completely if present
+}
+
+type RegParts struct {
+    Name, Crc, Map  string
+    Length, Offset int
 }
 
 func (this *RegCfg) EffName() string {
@@ -151,6 +155,20 @@ type RawData struct {
     Selectable
 }
 
+type HeaderCfg struct {
+    Info    string
+    Fill    int
+    Data   []HeaderData
+    Registers []HeaderReg
+    PCBs   []Selectable
+    // Offset in the ROM stream of each ROM region
+    Offset HeaderOffset
+    Frames []FrameCfg // indicates that the game draws a black frame around the active video
+    // Filled automatically
+    len int
+    node *XMLNode
+}
+
 type HeaderData struct {
     RawData
     Offset  int
@@ -158,23 +176,25 @@ type HeaderData struct {
     Pcb_id  bool
 }
 
+type HeaderReg struct {
+    Name string
+    Pos  string // format: byte[msb:lsb] or byte[bit]
+    Desc string
+    Values []HeaderRegValue
+    // private
+    offset, bit, mask, msb, lsb int
+}
+
+type HeaderRegValue struct {
+    Selectable
+    Value int
+}
+
 type HeaderOffset struct {
     Bits    int
     Reverse bool
     Start   int // Start location for the offset table
     Regions []string
-}
-
-type HeaderCfg struct {
-    Info    string
-    Fill    int
-    Data   []HeaderData
-    PCBs   []Selectable
-    // Offset in the ROM stream of each ROM region
-    Offset HeaderOffset
-    Frames []FrameCfg // indicates that the game draws a black frame around the active video
-    // Filled automatically
-    len int
 }
 
 type Info struct {

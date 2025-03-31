@@ -16,7 +16,7 @@
     Version: 1.0
     Date: 20-10-2023 */
 
-module jtshouse_cus30_mmr(
+module jtcus30_mmr(
     input             rst,
     input             clk,
 
