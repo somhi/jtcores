@@ -19,7 +19,7 @@
 module jtrthunder_sound(
     input               rst, clk,
                         cen_fm, cen_fm2, cen_mcu,
-                        lvbl, bsel,
+                        lvbl, mcu_seln,
 
     input        [15:0] dipsw,
     input        [ 6:0] joystick1, joystick2,
@@ -63,7 +63,7 @@ assign bus_busy = rom_cs & ~rom_ok;
 assign ram_addr = A[11:0];
 assign ram_we   = ram_cs & wr;
 assign ram_din  = mcu_dout;
-assign rom_addr = A[14:0];
+assign rom_addr = {A[15],A[13:0]};
 
 // Address decoder
 always @(*) begin
@@ -149,7 +149,7 @@ jtframe_6801mcu #(.ROMW(12),.SLOW_FRC(2),.MODEL("HD63701V")) u_63701(
 jtcus30 u_wav(
     .rst        ( rst           ),  // original does not have a reset pin
     .clk        ( clk           ),
-    .bsel       ( bsel          ),
+    .bsel       ( mcu_seln      ),
     .cen        ( cen_mcu       ),
 
     .xdin       ( c30_dout      ),

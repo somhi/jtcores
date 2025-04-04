@@ -117,10 +117,8 @@ always @(posedge clk, posedge rst) begin
                 cnt     <= 8;
                 no_zoom <= hzoom == HZONE || hzoom == 0; // zoom=0 is not valid. Makes counts keep going and busy stays forever. Check simpsons/scene 32
                 if( !hz_keep ) begin
-                    hz_cnt   <= 0;
+                    hz_cnt   <= HZONE >> 1;
                     buf_addr <= xpos;
-                end else begin
-                    hz_cnt <= nx_hz;
                 end
             end
         end else if(KEEP_OLD==0 || cen || cnt[3] ) begin

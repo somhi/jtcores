@@ -36,23 +36,30 @@ module jtflstory_sub(
     // ROM access
     output reg       rom_cs,
     input     [ 7:0] rom_data,
-    input            rom_ok
+    input            rom_ok,
+
+    output reg       user1_cs,
+    input     [ 7:0] user1_data,
+    input            user1_ok
 );
 
 wire [15:0] A;
 reg  [ 7:0] din;
 reg         rst_n;
-wire        mreq_n, rfsh_n, int_n, busak_n;
-wire        bus_cen;
+wire        mreq_n, iorq_n, m1_n, rfsh_n, int_n, busak_n,
+            bus_cen, sdram_cs, sdram_ok;
 
 assign A        = addr;
 assign int_n    = ~dip_pause | lvbl;
+assign sdram_cs = rom_cs | user1_cs,
+       sdram_ok = rom_ok | user1_ok;
 
 assign bus_cen  = cen & ~bus_wait;
 
 always @* begin
-    rom_cs      = 0;
-    bus_cs      = 0;
+    rom_cs   = 0;
+    bus_cs   = 0;
+    user1_cs = !iorq_n && m1_n;
 
     if( !mreq_n && rfsh_n ) case(A[15:14])
         0,1,2: rom_cs = 1;
@@ -61,7 +68,9 @@ always @* begin
 end
 
 always @* begin
-    din = rom_cs ? rom_data : bus_din;
+    din = rom_cs   ? rom_data   :
+          user1_cs ? user1_data :
+                     bus_din;
 end
 
 always @(posedge clk) begin
@@ -77,9 +86,9 @@ jtframe_sysz80 #(.RAM_AW(11),.CLR_INT(1),.RECOVERY(1)) u_cpu(
     .nmi_n      ( nmi_n       ),
     .busrq_n    ( busrq_n     ),
     .busak_n    ( busak_n     ),
-    .m1_n       (             ),
+    .m1_n       ( m1_n        ),
     .mreq_n     ( mreq_n      ),
-    .iorq_n     (             ),
+    .iorq_n     ( iorq_n      ),
     .rd_n       ( rd_n        ),
     .wr_n       ( wr_n        ),
     .rfsh_n     ( rfsh_n      ),
@@ -90,8 +99,8 @@ jtframe_sysz80 #(.RAM_AW(11),.CLR_INT(1),.RECOVERY(1)) u_cpu(
     .ram_dout   (             ),
     // ROM access
     .ram_cs     ( 1'b0        ),
-    .rom_cs     ( rom_cs      ),
-    .rom_ok     ( rom_ok      )
+    .rom_cs     ( sdram_cs    ),
+    .rom_ok     ( sdram_ok    )
 );
 
 endmodule
