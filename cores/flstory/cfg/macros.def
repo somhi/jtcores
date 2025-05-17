@@ -34,3 +34,6 @@ JTFRAME_IOCTL_RD+=1
 
 [mist]
 JTFRAME_MIST_DSP_BLOCKS=Auto
+
+[mist_neptuno2]
+-JTFRAME_LIGHTGUN
