@@ -92,9 +92,16 @@ prepare_files() {
 }
 
 lint_uut() {
+	local macro
+	if [ ! -z "$MACRO" ]; then
+		macro="-D$MACRO"
+	fi
 	local top
 	top=`get_top_module`
-	verilator --lint-only -f $GATHER --top-module $top
+	if [[ $macro != *JTFRAME_MCLK* ]]; then
+		macro="$macro -DJTFRAME_MCLK=48000000"
+	fi
+	verilator --lint-only -f $GATHER --top-module $top $macro
 }
 
 get_top_module() {
@@ -119,6 +126,9 @@ run_simulation() {
 	local macro
 	if [ ! -z "$MACRO" ]; then
 		macro="-D $MACRO"
+	fi
+	if [[ $macro != *JTFRAME_MCLK* ]]; then
+		macro="$macro -D JTFRAME_MCLK=48000000"
 	fi
 	iverilog -g2012 `find -name "*.v"` `find -name "*.sv"` \
 		-I$JTFRAME/ver/inc \
