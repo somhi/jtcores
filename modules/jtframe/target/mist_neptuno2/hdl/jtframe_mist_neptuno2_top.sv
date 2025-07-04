@@ -143,9 +143,16 @@ assign spi_do_int = SPI_SS4 ? 1'bz : SD_MISO;
 assign SPI_DO = spi_do_int;
 
 // JAMMA interface
+// JAMMA interface
+reg joy_select = 1'b1;
+always @(posedge XJOY_LOAD) begin
+	joy_select <= ~joy_select | ~XJOY_CLK;
+end
+
 assign JOY_CLK    = XJOY_CLK;
 assign JOY_LOAD   = XJOY_LOAD;
 assign XJOY_DATA  = JOY_DATA;
+assign JOY_SELECT = joy_select;
 
 `ifdef MIST_USE_QSPI
 localparam bit QSPI = 1;
