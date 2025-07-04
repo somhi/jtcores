@@ -40,7 +40,7 @@ module jtthundr_objscan(
     input      [ 7:0] debug_bus
 );
 
-localparam [8:0] XOS=9'h1f8;
+localparam [8:0] XOS=9'h1fc;
 localparam [7:0] YOS=8'h0f;
 localparam [1:0] HLARGE=2'd2; // 32-pixel wide object
 
@@ -53,9 +53,6 @@ reg  [1:0] hos, vos, hmsb_nx;
 reg  [4:0] nx_ysub;
 reg        inzone, wide=0;
 wire       draw_step, hsub, cen, hcnt_nx;
-`ifdef SIMULATION
-wire [12:0] full_a = {ram_addr,1'b0};
-`endif
 
 assign draw_step = st==3;
 assign objcnt    = raw_addr[2+:7];
@@ -84,7 +81,7 @@ always @* begin
         1,3: hmsb_nx = hos; // 8/4 pxl
         default: hmsb_nx = { hflip, 1'b0 }; // 32 pxl
     endcase
-    if(debug_bus[7] && objcnt!=debug_bus[6:0]) inzone=0;
+    // if(debug_bus[7] && objcnt!=debug_bus[6:0]) inzone=0;
     if(&objcnt) inzone=0;
 
     case(ram_dout[2:1])

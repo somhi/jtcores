@@ -23,22 +23,23 @@ module jtthundr_game(
 wire [31:0] fix0a_data, fix0b_data, fix1a_data, fix1b_data;
 wire [15:0] fave, maddr;
 wire [ 1:0] busy, pcm_wraddr;
+wire [ 3:0] scrhos;
 reg  [ 7:0] dbg_mux;
-wire [ 7:0] backcolor, st_main, mdout, c30_dout, st_video;
-wire [ 8:0] scr0x, scr0y, scr1x, scr1y;
+wire [ 7:0] backcolor, st_main, mdout, c30_dout, st_video, objvos;
+wire [ 8:0] scr0x, scr0y, scr1x, scr1y, objhos;
 wire        cen_main, cen_sub, cen_mcu, flip, mmr0_cs, mmr1_cs, brnw, tile_bank,
             mrnw, bsel, mc30_cs, mcu_seln, dmaon, ommr_cs, pcm_wr;
 // Configuration through MRA header
-wire        sndext_en, nocpu2, mcualt, scrhflip, only2bpp,
+wire        sndext_en, nocpu2, mcualt, scrhflip, only2bpp, plane3inv,
             genpeitd, roishtar, wndrmomo;
 reg         lvbl_ps;
 
 assign debug_view = dbg_mux;
 assign dip_flip   = flip;
-assign fix0a_data = { 8'h0, only2bpp ? 8'h0 : scr0a_data[23:16], scr0a_data[15:0]};
-assign fix0b_data = { 8'h0, only2bpp ? 8'h0 : scr0b_data[23:16], scr0b_data[15:0]};
-assign fix1a_data = { 8'h0, only2bpp ? 8'h0 : scr1a_data[23:16], scr1a_data[15:0]};
-assign fix1b_data = { 8'h0, only2bpp ? 8'h0 : scr1b_data[23:16], scr1b_data[15:0]};
+assign fix0a_data = { only2bpp ? 16'hffff : scr0a_data[31:16], scr0a_data[15:0]};
+assign fix0b_data = { only2bpp ? 16'hffff : scr0b_data[31:16], scr0b_data[15:0]};
+assign fix1a_data = { only2bpp ? 16'hffff : scr1a_data[31:16], scr1a_data[15:0]};
+assign fix1b_data = { only2bpp ? 16'hffff : scr1b_data[31:16], scr1b_data[15:0]};
 
 always @(posedge clk) lvbl_ps <= LVBL & dip_pause;
 
@@ -58,13 +59,19 @@ jtthundr_header u_header(
     .prog_we    ( prog_we   ),
 
     .only2bpp   ( only2bpp  ),
+    .plane3inv  ( plane3inv ),
     .nocpu2     ( nocpu2    ),
     .sndext_en  ( sndext_en ),
     .mcualt     ( mcualt    ),
     .genpeitd   ( genpeitd  ),
     .roishtar   ( roishtar  ),
     .wndrmomo   ( wndrmomo  ),
+    .metrocrs   ( metrocrs  ),
     .scrhflip   ( scrhflip  ),
+    .scrhos     ( scrhos    ),
+    // object offset
+    .objhos     ( objhos    ),
+    .objvos     ( objvos    ),
     .prog_addr  ( prog_addr[2:0] ),
     .prog_data  ( prog_data )
 );
@@ -95,6 +102,7 @@ jtthundr_main u_main(
     .roishtar   ( roishtar  ),
     .genpeitd   ( genpeitd  ),
     .wndrmomo   ( wndrmomo  ),
+    .metrocrs   ( metrocrs  ),
 
     .dmaon      ( dmaon     ),
     .ommr_cs    ( ommr_cs   ),
@@ -122,6 +130,7 @@ jtthundr_main u_main(
     .bus_busy   ( busy[0]   ),
 
     // VRAM
+    .vtxta      ( vtxta     ),
     .baddr      ( baddr     ),
     .bdout      ( bdout     ),
     .scr0_dout  (vram02sh0_data ),
@@ -160,16 +169,19 @@ jtthundr_sound u_sound(
     .cen_c30    ( cen_c30   ),
     .pxl_cen    ( pxl_cen   ),
 
+    .vs         ( VS        ),
     .lvbl       ( lvbl_ps   ),
     .hopmappy   ( mcualt    ),
     .genpeitd   ( genpeitd  ),
     .roishtar   ( roishtar  ),
     .wndrmomo   ( wndrmomo  ),
+    .metrocrs   ( metrocrs  ),
 
-    .dipsw      ( dipsw[15:0]),
+    .dipsw      (dipsw[19:0]),
     .joystick1  (joystick1[6:0]),
     .joystick2  (joystick2[6:0]),
-    .cab_1p     ( cab_1p[1:0]),
+    .joyana_r1  ( joyana_r1 ),
+    .cab_1p     (cab_1p[1:0]),
     .coin       ( coin[1:0] ),
     .service    ( service   ),
 
@@ -224,8 +236,15 @@ jtthundr_video u_video(
     .pxl2_cen   ( pxl2_cen  ),
     .flip       ( flip      ),
     .scrhflip   ( scrhflip  ),
+    .plane3inv  ( plane3inv ),
     .backcolor  ( backcolor ),
     .bank       ( tile_bank ),
+    .metrocrs   ( metrocrs  ),
+
+    // per game screen offsets
+    .scrhos     ( scrhos    ),
+    .objhos     ( objhos    ),
+    .objvos     ( objvos    ),
 
     .dmaon      ( dmaon     ),
     .ommr_cs    ( ommr_cs   ),
@@ -282,6 +301,11 @@ jtthundr_video u_video(
     .scr1b_addr ( scr1b_addr),
     .scr1b_data ( fix1b_data),
     .scr1b_ok   ( scr1b_ok  ),
+
+    .txt_cs     ( txt_cs    ),
+    .txt_addr   ( txt_addr  ),
+    .txt_data   ( txt_data  ),
+    .txt_ok     ( txt_ok    ),
 
     // Palette PROMs
     .objpal_addr(objpal_addr),

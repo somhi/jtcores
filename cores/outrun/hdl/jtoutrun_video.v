@@ -281,6 +281,7 @@ jts16_tilemap #(.MODEL(1),.SCR2_DLY(10'd10)) u_tilemap(
     .shadow     ( shadow    ),
     .set_fix    ( 1'b1      ),  // fixed layer always on top
     // Selected layer
+    .obj        (           ),
     .sa         ( sa        ),
     .sb         ( sb        ),
     .fix        ( fix       ),
