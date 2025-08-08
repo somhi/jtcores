@@ -198,6 +198,7 @@ set_global_assignment -name FORCE_SYNCH_CLEAR ON
 
 {{ if .Macros.JTFRAME_RELEASE -}}
 set_global_assignment -name OPTIMIZATION_MODE "HIGH PERFORMANCE EFFORT"
+#set_global_assignment -name OPTIMIZATION_MODE "AGGRESSIVE PERFORMANCE"
 {{ else -}}
 set_global_assignment -name CYCLONEII_OPTIMIZATION_TECHNIQUE BALANCED
 {{ end }}
