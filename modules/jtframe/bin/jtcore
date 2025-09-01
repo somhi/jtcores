@@ -304,14 +304,14 @@ if [ $SKIP_COMPILE = FALSE ]; then
             # Report timing
             if grep --color=auto "Worst-case.*-[0-9.]*" "$LOG"; then
                 if [[ -z "$SKIPTIMING" && ! -v JTFRAME_NOSTA ]]; then
-                    FAIL=1
-                fi
+                FAIL=1
             fi
-            if [ "$FAIL" = 0 ]; then
-                echo PASS
-            else
-                echo FAIL
-            fi
+        fi
+        report_sdc_problems "$RPTPATH"
+        if [ "$FAIL" = 0 ]; then
+            echo PASS
+        else
+            echo FAIL
         fi
     else
         # Simulation

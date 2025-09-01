@@ -26,8 +26,8 @@ localparam SSRIDERS = 0,
            GLFGREAT = 3;
 
 /* verilator tracing_on */
-wire        snd_irq, rmrd, rst8, dimmod, dimpol,
-            pal_cs, cpu_we, tilesys_cs, objsys_cs, pcu_cs, cpu_n,
+wire        snd_irq, rmrd, rst8, dimmod, dimpol, dma_bsy, psac_cs, psac_bank,
+            pal_cs, cpu_we, tilesys_cs, objsys_cs, pcu_cs, cpu_n, enc_done,
             cpu_rnw, vdtac, tile_irqn, tile_nmin, snd_wrn, oaread_en,
             BGn, BRn, BGACKn, prot_irqn, prot_cs, objreg_cs, oram_cs;
 wire [15:0] pal_dout, oram_dout, prot_dout, oram_din;
@@ -38,8 +38,15 @@ reg         ssriders=0, tmnt2=0, lgtnfght=0, glfgreat=0;
 wire [ 7:0] tilesys_dout, snd2main,
             obj_dout, snd_latch,
             st_main, st_video;
+wire [ 7:0] platch;
 wire [ 2:0] dim;
 wire [ 1:0] oram_we;
+
+`ifdef NOPSAC
+wire [ 1:0] lmem_we;
+wire [15:0] lmem_dout=0, line_dout=0;
+wire [10:1] line_addr;
+`endif
 
 assign debug_view = debug_mux;
 assign ram_we     = cpu_we & ram_cs;
@@ -52,7 +59,7 @@ always @(posedge clk) begin
     case( debug_bus[7:6] )
         0: debug_mux <= st_main;
         1: debug_mux <= st_video;
-        3: debug_mux <= { 2'b0, dimpol, dimmod, 1'b0, dim };
+        3: debug_mux <= { enc_done, 1'b0, dimpol, dimmod, 1'b0, dim };
         default: debug_mux <= 0;
     endcase
 end
@@ -66,7 +73,7 @@ always @(posedge clk) begin
     end
 end
 
-/* verilator tracing_on */
+/* verilator tracing_off */
 jtriders_main u_main(
     .rst            ( rst           ),
     .clk            ( clk           ),
@@ -109,10 +116,17 @@ jtriders_main u_main(
     .vram_dout      ( tilesys_dout  ),
     .oram_dout      ( oram_dout     ),
     .pal_dout       ( pal_dout      ),
+    // PSAC
+    .psreg_cs       ( psac_cs       ),
+    .psac_bank      ( psac_bank     ),
+    .lmem_we        ( lmem_we       ),
+    .lmem_dout      ( lmem_dout     ),
+    .platch         ( platch        ),
     // Object MSB RAM
     .omsb_we        ( omsb_we       ),
     .omsb_addr      ( omsb_addr     ),
     .omsb_dout      ( omsb_dout     ),
+    .dma_bsy        ( dma_bsy       ),
     // To video
     .rmrd           ( rmrd          ),
     .dimmod         ( dimmod        ),
@@ -180,6 +194,7 @@ jtriders_video u_video (
     .pxl_cen        ( pxl_cen       ),
     .pxl2_cen       ( pxl2_cen      ),
     .cpu_n          ( cpu_n         ),
+    .enc_done       ( enc_done      ),
 
     .ssriders       ( ssriders      ),
     .lgtnfght       ( lgtnfght      ),
@@ -216,17 +231,28 @@ jtriders_video u_video (
     .objsys_dout    ( oram_dout     ),
     .pal_dout       ( pal_dout      ),
     .rmrd           ( rmrd          ),
-    .dma_bsy        (               ),
-    // Z GFX
-    .ztiles_addr    ( ztiles_addr   ),
-    .ztiles_data    ( ztiles_data   ),
-    .ztiles_cs      ( ztiles_cs     ),
-    .ztiles_ok      ( ztiles_ok     ),
+    .dma_bsy        ( dma_bsy       ),
+    .platch         ( platch        ),
+    // PSAC GFX
+    .psac_cs        ( psac_cs       ),
+    .psac_bank      ( psac_bank     ),
+    .psc_addr       ( psc_addr      ),
+    .psc_data       ( psc_data      ),
+    .psc_cs         ( psc_cs        ),
+    .psc_ok         ( psc_ok        ),
 
-    .zmap_addr      ( zmap_addr     ),
-    .zmap_data      ( zmap_data     ),
-    .zmap_cs        ( zmap_cs       ),
-    .zmap_ok        ( zmap_ok       ),
+    .psclo_addr     ( psclo_addr    ),
+    .psclo_data     ( psclo_data    ),
+    .psclo_ok       ( psclo_ok      ),
+    .psclo_cs       ( psclo_cs      ),
+
+    .pschi_addr     ( pschi_addr    ),
+    .pschi_data     ( pschi_data    ),
+    .pschi_ok       ( pschi_ok      ),
+    .pschi_cs       ( pschi_cs      ),
+
+    .line_addr      ( line_addr     ),
+    .line_dout      ( line_dout     ),
     // SDRAM
     .lyra_addr      ( lyra_addr     ),
     .lyrb_addr      ( lyrb_addr     ),
@@ -259,7 +285,7 @@ jtriders_video u_video (
     .st_dout        ( st_video      )
 );
 
-/* verilator tracing_off */
+/* verilator tracing_on */
 jtriders_sound u_sound(
     .rst        ( rst           ),
     .clk        ( clk           ),
@@ -273,7 +299,7 @@ jtriders_sound u_sound(
     .glfgreat   ( glfgreat      ),
 
     // communication with main CPU
-    .main_dout  ( ram_din[7:0]  ),
+    .main_dout  ( ram_din       ),
     .main_din   ( snd2main      ),
     .main_addr  ( main_addr[4:1]),
     .main_rnw   ( snd_wrn       ),

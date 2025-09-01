@@ -28,7 +28,7 @@ module jtriders_sound(
     input           glfgreat,
 
     // communication with main CPU
-    input   [ 7:0]  main_dout,  // bus access for Punk Shot
+    input   [15:0]  main_dout,  // bus access for Punk Shot
     output  [ 7:0]  main_din,
     input   [ 4:1]  main_addr,
     input           main_rnw,
@@ -64,20 +64,17 @@ module jtriders_sound(
     output     signed [15:0] k60_l, k60_r
 );
 `ifndef NOSOUND
-wire        [ 7:0]  cpu_dout, cpu_din,  ram_dout, fm_dout,
-                    k60_dout /*, k39_dout,*/ /*latch_dout*/;
+wire        [ 7:0]  cpu_dout, cpu_din,  ram_dout, fm_dout, main_dmux, k60_dout;
 wire        [20:0]  rawa_addr;
 wire        [15:0]  A;
 wire signed [15:0]  fm_l,  fm_r;
-wire                m1_n, mreq_n, rd_n, wr_n, iorq_n, rfsh_n, nmi_n,
-                    cpu_cen, sample, upper4k, cen_g, int_n, nmi_trig, nmi_clr,
+wire                m1_n, mreq_n, rd_n, wr_n, iorq_n, rfsh_n, nmi_n, tim2,
+                    cpu_cen, sample, upper4k, cen_g, int_n, cen_ws,
                     mem_f8, mem_fa, mem_fc, mem_acc, mem_upper;
 reg                 ram_cs, fm_cs,  k60_cs,  nmi_cs;
 
-assign int_n    = ~snd_irq;
-assign nmi_trig =  sample;
-assign nmi_clr  =  nmi_cs;
-assign rom_addr = A[15:0];
+assign int_n    = glfgreat ? ~tim2 : ~snd_irq;
+assign rom_addr =  A[15:0];
 assign upper4k  = &A[15:12];
 assign mem_acc  = !mreq_n && rfsh_n;
 assign mem_upper= mem_acc && upper4k;
@@ -87,9 +84,12 @@ assign mem_fc   = mem_upper &&  A[11:9]==6; // FCxx
 assign cpu_din  = rom_cs ? rom_data   :
                   ram_cs ? ram_dout   :
                   k60_cs ? k60_dout   :
-                  fm_cs  ? fm_dout    : 8'hff;
-assign cen_g    = (ram_cs | rom_cs) ? cen_4 : cen_8; // wait state for RAM/ROM access
+                  fm_cs  ? fm_dout    : 8'h0;
+assign cen_ws   = (ram_cs | rom_cs) ? cen_4 : cen_8; // wait state for RAM/ROM access
+assign cen_g    = glfgreat ? cen_fm : cen_ws;
+
 assign pcma_addr= lgtnfght ? {1'b0,rawa_addr[19:0]} : rawa_addr;
+assign main_dmux= glfgreat ? main_dout[15:8] : main_dout[7:0];
 
 always @(*) begin
     k60_cs    = 0;
@@ -119,16 +119,18 @@ always @(*) begin
     end
 end
 
-jtframe_edge #(.QSET(0)) u_edge (
+// NMI starts asserted so the CPU ignores it until it clears it.
+// glfgreat requires this for the Z80 to boot up correctly.
+jtframe_edge #(.QSET(0),.ATRST(0)) u_edge (
     .rst    ( rst       ),
     .clk    ( clk       ),
-    .edgeof ( nmi_trig  ),
-    .clr    ( nmi_clr   ),
+    .edgeof ( sample    ),
+    .clr    ( nmi_cs    ),
     .q      ( nmi_n     )
 );
 
 /* verilator tracing_off */
-jtframe_sysz80 #(`ifdef SND_RAMW .RAM_AW(`SND_RAMW), `endif .CLR_INT(1)) u_cpu(
+jtframe_sysz80 #(`ifdef SND_RAMW .RAM_AW(`SND_RAMW), `endif .CLR_INT(1),.RECOVERY(0)) u_cpu(
     .rst_n      ( ~rst      ),
     .clk        ( clk       ),
     .cen        ( cen_g     ),
@@ -176,17 +178,17 @@ jt51 u_jt51(
     .xright     ( fm_r      )
 );
 
-/* verilator tracing_off */
+/* verilator tracing_on */
 jt053260 u_k53260(
     .rst        ( rst       ),
     .clk        ( clk       ),
-    .cen        ( cen_fm    ),
+    .cen        ( cen_pcm   ),
     // Main CPU interface
     .ma0        ( main_addr[1] ),
     .mrdnw      ( main_rnw  ),
     .mcs        ( 1'b1      ),
     .mdin       ( main_din  ),
-    .mdout      ( main_dout ),
+    .mdout      ( main_dmux ),
     // Sub CPU control
     .addr       ( A[5:0]    ),
     .rd_n       ( rd_n      ),
@@ -200,28 +202,25 @@ jt053260 u_k53260(
     .roma_addr  ( rawa_addr ),
     .roma_data  ( pcma_dout ),
     .roma_cs    ( pcma_cs   ),
-    // .roma_ok    ( pcma_ok   ),
 
     .romb_addr  ( pcmb_addr ),
     .romb_data  ( pcmb_dout ),
     .romb_cs    ( pcmb_cs   ),
-    // .romb_ok    ( pcmb_ok   ),
 
     .romc_addr  ( pcmc_addr ),
     .romc_data  ( pcmc_dout ),
     .romc_cs    ( pcmc_cs   ),
-    // .romc_ok    ( pcmc_ok   ),
 
     .romd_addr  ( pcmd_addr ),
     .romd_data  ( pcmd_dout ),
     .romd_cs    ( pcmd_cs   ),
-    // .romd_ok    ( pcmd_ok   ),
     // sound output - raw
     .aux_l      ( fm_l      ),
     .aux_r      ( fm_r      ),
     .snd_l      ( k60_l     ),
     .snd_r      ( k60_r     ),
     .sample     (           ),
+    .tim2       ( tim2      ),
     .ch_en      (snd_en[5:1])
 );
 `else
@@ -236,6 +235,6 @@ assign  pcmd_addr  = 0;
 assign  pcmd_cs    = 0;
 assign  rom_addr   = 0;
 initial rom_cs     = 0;
-assign  { fm_l, fm_r, k60_l, k60_r } = 0;
+assign  { k60_l, k60_r } = 0;
 `endif
 endmodule

@@ -1,16 +1,16 @@
-/*  This file is part of JTKCPU.
-    JTKCPU program is free software: you can redistribute it and/or modify
+/*  This file is part of JTCORES.
+    JTCORES program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
 
-    JTKCPU program is distributed in the hope that it will be useful,
+    JTCORES program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with JTKCPU.  If not, see <http://www.gnu.org/licenses/>.
+    along with JTCORES.  If not, see <http://www.gnu.org/licenses/>.
 
     Author: Jose Tejada Gomez. Twitter: @topapate
     Version: 1.0
@@ -20,6 +20,7 @@ module jt053260_channel(
     input                    rst,
     input                    clk,
     input                    cen,
+    input                    swap,
     // MMR interface
     input             [ 2:0] addr,
     input             [ 7:0] din,
@@ -52,6 +53,7 @@ reg         [16:0] cnt;
 reg         [15:0] inc;
 reg         [11:0] pitch_cnt;
 reg  signed [ 7:0] pre_snd;
+wire signed [ 7:0] fade_out;
 reg  signed [ 7:0] kadpcm;
 reg                adpcm_cnt, cnt_up, keyon_l;
 
@@ -68,13 +70,14 @@ assign pitch  = { mmr[1][3:0], mmr[0] };
 assign volume = { mmr[7][6:0] };
 
 assign nx_pitch_cnt = {1'd0, pitch_cnt } + 13'd1;
-assign nibble       = adpcm_cnt ? rom_data[7:4] : rom_data[3:0];
+assign nibble       = adpcm_cnt^swap ? rom_data[7:4] : rom_data[3:0];
 assign sample       = nx_pitch_cnt[12] & cen;
 assign svl          = {1'b0, vol_l[13-:7]};
 assign svr          = {1'b0, vol_r[13-:7]};
 assign mul_l        = pre_snd * svl;
 assign mul_r        = pre_snd * svr;
 assign over         = cnt[16] & keyon;
+assign fade_out     = pre_snd >>> 1;
 
 always @* begin
     case ( nibble )
@@ -140,32 +143,32 @@ always @(posedge clk, posedge rst) begin
                 rom_addr <= rom_addr+1'd1;
             end
             cnt       <= {1'd0, length};
-            adpcm_cnt <= 0;
+            adpcm_cnt <= 1;
             pre_snd   <= 0;
             rom_cs    <= tst_en;
             pitch_cnt <= pitch;
             cnt_up    <= 0;
             bsy       <= 0;
         end else if( cen ) begin
-            if( !keyon_l ) bsy <= 1;
-            // ROM address increment and sample cnt decrement
-            if( !cnt[16] && nx_pitch_cnt[12] ) begin
-                adpcm_cnt <= ~adpcm_cnt;
-                if( adpcm_cnt || !adpcm_en ) begin
-                    rom_addr <= rom_addr + 1'd1;
-                    cnt_up <= 1;
-                    if( cnt==0 && loop ) begin
-                        rom_addr <= start;
-                        cnt      <= {1'd0, length};
-                        cnt_up   <= 0;
-                    end
-                end
-                pre_snd <= adpcm_en ? pre_snd + kadpcm : rom_data;
-            end
+            bsy <= ~over;
             pitch_cnt <= nx_pitch_cnt[12] ? pitch : nx_pitch_cnt[11:0];
-            if( over ) begin
-                pre_snd <= pre_snd >>> 1; // fade out to keep dc level low
-                bsy     <= 0;
+            if( nx_pitch_cnt[12] ) begin
+                if( over  ) begin
+                    pre_snd <= fade_out;
+                end else begin
+                    // ROM address increment and sample cnt decrement
+                    adpcm_cnt <= ~adpcm_cnt;
+                    if( !adpcm_cnt || !adpcm_en ) begin
+                        rom_addr <= rom_addr + 1'd1;
+                        cnt_up <= 1;
+                        if( cnt==0 && loop ) begin
+                            rom_addr <= start;
+                            cnt      <= {1'd0, length};
+                            cnt_up   <= 0;
+                        end
+                    end
+                    pre_snd <= adpcm_en ? pre_snd + kadpcm : rom_data;
+                end
             end
         end
     end

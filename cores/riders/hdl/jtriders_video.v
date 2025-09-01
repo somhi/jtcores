@@ -23,7 +23,7 @@ module jtriders_video(
     input             pxl2_cen,
 
     input             ssriders, lgtnfght, glfgreat,
-    output            cpu_n,
+    output            cpu_n, enc_done,
 
     // Base Video
     output            lhbl,
@@ -43,7 +43,9 @@ module jtriders_video(
     input      [ 1:0] cpu_dsn,
     input      [15:0] cpu_dout,
     input             cpu_we,
+    output     [ 7:0] platch,
 
+    input             psac_cs,
     input             pcu_cs,
     input             pal_cs,
     output     [15:0] pal_dout,
@@ -86,16 +88,24 @@ module jtriders_video(
     input      [31:0] lyrb_data,
     input      [31:0] lyro_data,
     // Z Gfx (glfgreat only)
-    output     [20:2] ztiles_addr,
-    input      [31:0] ztiles_data,
-    output            ztiles_cs,
-    input             ztiles_ok,
+    input             psac_bank,
+    output     [20:0] psc_addr,
+    input      [ 7:0] psc_data,
+    output            psc_cs,
+    input             psc_ok,
 
-    output     [20:2] zmap_addr,
-    input      [31:0] zmap_data,
-    output            zmap_cs,
-    input             zmap_ok,
+    output     [19:1] psclo_addr,
+    input      [15:0] psclo_data,
+    input             psclo_ok,
+    output            psclo_cs,
 
+    output     [17:1] pschi_addr,
+    input      [15:0] pschi_data,
+    input             pschi_ok,
+    output            pschi_cs,
+
+    output     [10:1] line_addr,
+    input      [15:0] line_dout,
     // Color
     input      [ 2:0] dim,
     input             dimmod,
@@ -116,13 +126,13 @@ module jtriders_video(
 );
 
 wire [21:2] lyro_prea;
-wire [15:0] cpu_saddr;
+wire [15:0] cpu_saddr, dump_addr;
 wire [12:0] pre_f, pre_a, pre_b, ocode;
 wire [11:0] lyra_pxl, lyrb_pxl, lyro_pxl;
 wire [ 8:0] hdump, vdump, vrender, vrender1;
-wire [ 7:0] lyrf_extra, lyrf_col, dump_scr, lyrf_pxl, st_scr,
+wire [ 7:0] lyrf_extra, lyrf_col, dump_scr, lyrf_pxl, st_scr, psc_pxl,
             lyra_extra, lyra_col, dump_obj, scr_mmr,  obj_mmr, dump_other,
-            lyrb_extra, lyrb_col, dump_pal, opal,     cpu_d8, pal_mmr;
+            lyrb_extra, lyrb_col, dump_pal, opal,     cpu_d8, pal_mmr, psac_mmr;
 wire [ 4:0] obj_prio;
 wire        shadow;
 wire [ 3:0] obj_amsb;
@@ -144,14 +154,11 @@ assign lyro_cs     = lyro_precs;
 assign dump_other  = {2'd0,dimpol, dimmod, 1'b0, dim};
 assign cpu_n       = hdump[0]; // to be verified
 
-// not ready yet
-assign  ztiles_addr=0, zmap_addr=0, ztiles_cs=0, zmap_cs=0;
-
 always @(posedge clk) begin
     skip12 <= lgtnfght | glfgreat;
 end
-
-jtriders_dump #(.FULLOBJ(1)) u_dump(
+/* verilator tracing_off */
+jtriders_dump #(.FULLOBJ(1), .PSAC(1)) u_dump(
     .clk            ( clk           ),
     .dump_scr       ( dump_scr      ),
     .dump_obj       ( dump_obj      ),
@@ -159,11 +166,13 @@ jtriders_dump #(.FULLOBJ(1)) u_dump(
     .pal_mmr        ( pal_mmr       ),
     .scr_mmr        ( scr_mmr       ),
     .obj_mmr        ( obj_mmr       ),
+    .psac_mmr       ( psac_mmr      ),
     .other          ( dump_other    ),
 
     .ioctl_addr     ( ioctl_addr    ),
     .ioctl_din      ( ioctl_din     ),
     .obj_amsb       ( obj_amsb      ),
+    .part_addr      ( dump_addr     ),
 
     .debug_bus      ( debug_bus     ),
     .st_scr         ( st_scr        ),
@@ -172,29 +181,17 @@ jtriders_dump #(.FULLOBJ(1)) u_dump(
 
 always @(posedge clk) vdtac <= pre_vdtac; // delay, since cpu_din also delayed
 
-// function [31:0] sorto( input [31:0] x );
-//     sorto= {
-//         x[12], x[ 8], x[ 4], x[ 0],
-//         x[28], x[24], x[20], x[16],
-//         x[13], x[ 9], x[ 5], x[ 1],
-//         x[29], x[25], x[21], x[17],
-//         x[14], x[10], x[ 6], x[ 2],
-//         x[30], x[26], x[22], x[18],
-//         x[15], x[11], x[ 7], x[ 3],
-//         x[31], x[27], x[23], x[19] };
-// endfunction
-
 always @* begin
-        lyrf_addr = { 1'b0, pre_f[12:11], lyrf_col[3:2], lyrf_col[4], lyrf_col[1:0], pre_f[10:0] };
-        lyra_addr = { 1'b0, pre_a[12:11], lyra_col[3:2], lyra_col[4], lyra_col[1:0], pre_a[10:0] };
-        lyrb_addr = { 1'b0, pre_b[12:11], lyrb_col[3:2], lyrb_col[4], lyrb_col[1:0], pre_b[10:0] };
+    lyrf_addr = { 1'b0, pre_f[12:11], lyrf_col[3:2], lyrf_col[4], lyrf_col[1:0], pre_f[10:0] };
+    lyra_addr = { 1'b0, pre_a[12:11], lyra_col[3:2], lyra_col[4], lyra_col[1:0], pre_a[10:0] };
+    lyrb_addr = { 1'b0, pre_b[12:11], lyrb_col[3:2], lyrb_col[4], lyrb_col[1:0], pre_b[10:0] };
 end
 
 function [7:0] cgate( input [7:0] c);
     cgate = { c[7:5], 5'd0 };
 endfunction
 
-/* verilator tracing_on */
+/* verilator tracing_off */
 // extra blanking added to help MiSTer output
 // on real hardware, it would've been manually
 // adjusted on the CRT.
@@ -277,7 +274,7 @@ jtaliens_scroll #(
     .lyrb_pxl   ( lyrb_pxl  ),
 
     // Debug
-    .ioctl_addr ( ioctl_addr[14:0]),
+    .ioctl_addr ( dump_addr[14:0]),
     .ioctl_ram  ( ioctl_ram ),
     .ioctl_din  ( dump_scr  ),
     .mmr_dump   ( scr_mmr   ),
@@ -287,7 +284,65 @@ jtaliens_scroll #(
     .st_dout    ( st_scr    )
 );
 
+// The 256kB compressed tilemap does not fit in the Pocket BRAM
+// It would require using one of the external memories and adding one
+// more line buffer to cache it
+`ifndef NOPSAC
 /* verilator tracing_on */
+reg psac_rst;
+
+always @(posedge clk) begin
+    psac_rst <= rst | ~glfgreat;
+end
+
+jtriders_psac u_psac(
+    .rst        ( psac_rst  ),
+    .clk        ( clk       ),
+    .enc_done   ( enc_done  ),
+
+    .pxl_cen    ( pxl_cen   ),
+    .enable     ( glfgreat  ),
+    .tmap_bank  ( psac_bank ),
+    .hdump      ( hdump     ),
+
+    .hs         ( hs        ),
+    .vs         ( vs        ),
+    .dtackn     ( 1'b0      ),
+
+    .cs         ( psac_cs   ), // cs always writes
+    .din        ( cpu_dout  ),
+    .addr       ( cpu_addr[4:1] ),
+    .dsn        ( cpu_dsn   ),
+    .dma_n      (           ),
+
+    .psclo_addr ( psclo_addr),
+    .psclo_data ( psclo_data),
+    .psclo_ok   ( psclo_ok  ),
+    .psclo_cs   ( psclo_cs  ),
+
+    .pschi_addr ( pschi_addr),
+    .pschi_data ( pschi_data),
+    .pschi_ok   ( pschi_ok  ),
+    .pschi_cs   ( pschi_cs  ),
+
+    .line_addr  ( line_addr ),
+    .line_dout  ( line_dout ),
+
+    // Tiles
+    .rom_addr   ( psc_addr  ),
+    .rom_data   ( psc_data  ),
+    .rom_cs     ( psc_cs    ),
+    .rom_ok     ( psc_ok    ),
+    .pxl        ( psc_pxl   ),
+    // IOCTL dump
+    .ioctl_addr (dump_addr[4:0]),
+    .ioctl_din  ( psac_mmr  )
+);
+`else
+assign psc_cs=0,psclo_cs=0,pschi_cs=0,psc_pxl=0, line_addr=0,
+    pschi_addr=0, psclo_addr=0,psc_addr=0,enc_done=0,psac_mmr=0;
+`endif
+
 wire [ 1:0] lyro_pri;
 wire [ 3:0] ommra;
 wire [ 8:0] vmux;
@@ -300,7 +355,7 @@ assign orama = lgtnfght ? cpu_addr[13:1] : oram_addr;
 assign oramd = lgtnfght ? cpu_dout : oram_din;
 assign oramw = lgtnfght ? {2{cpu_we}}&~cpu_dsn : oram_we;
 assign vmux  = vrender;
-
+/* verilator tracing_off */
 jtriders_obj #(.RAMW(13),.HFLIP_OFFSET(10'd325)) u_obj(    // sprite logic
     .rst        ( rst       ),
     .clk        ( clk       ),
@@ -310,9 +365,7 @@ jtriders_obj #(.RAMW(13),.HFLIP_OFFSET(10'd325)) u_obj(    // sprite logic
 
     // Base Video (inputs)
     .hs         ( hs        ),
-    .vs         ( vs        ),
     .lvbl       ( lvbl      ),
-    .lhbl       ( lhbl      ),
     .hdump      ( hdump     ),
     .vdump      ( vmux      ),
     // CPU interface
@@ -341,19 +394,20 @@ jtriders_obj #(.RAMW(13),.HFLIP_OFFSET(10'd325)) u_obj(    // sprite logic
     .prio       ({lyro_pxl[11:9],lyro_pri}),
     // Debug
     .ioctl_ram  ( ioctl_ram ),
-    .ioctl_addr ( {obj_amsb[1:0],ioctl_addr[11:0]} ),
+    .ioctl_addr ( {obj_amsb[1:0],dump_addr[11:0]} ),
     .dump_ram   ( dump_obj  ),
     .dump_reg   ( obj_mmr   ),
     .gfx_en     ( gfx_en    ),
     .debug_bus  ( debug_bus )
 );
 
-/* verilator tracing_on */
+/* verilator tracing_off */
 jtriders_colmix u_colmix(
     .rst        ( rst       ),
     .clk        ( clk       ),
     .pxl_cen    ( pxl_cen   ),
     .lgtnfght   ( lgtnfght  ),
+    .glfgreat   ( glfgreat  ),
 
     // Base Video
     .lhbl       ( lhbl      ),
@@ -375,6 +429,8 @@ jtriders_colmix u_colmix(
     .lyrb_pxl   ( lyrb_pxl  ),
     .lyro_pxl   ( lyro_pxl  ),
     .lyro_pri   ( lyro_pri  ),
+    .psc_pxl    ( psc_pxl   ),
+    .platch     ( platch    ),
 
     // shadow
     .dimmod     ( dimmod    ),
@@ -387,7 +443,7 @@ jtriders_colmix u_colmix(
     .blue       ( blue      ),
 
     // Debug
-    .ioctl_addr ( ioctl_addr[11:0]),
+    .ioctl_addr ( dump_addr[11:0]),
     .ioctl_ram  ( ioctl_ram ),
     .ioctl_din  ( dump_pal  ),
     .dump_mmr   ( pal_mmr   ),

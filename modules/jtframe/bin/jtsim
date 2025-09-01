@@ -48,7 +48,6 @@ MACOS=NO
 KEEP_FX68K=
 SED="sed -i"
 SHAUP=
-FRAMERATE=
 START_TIME=$(date +%s)
 UNDEF=
 FAST=
@@ -127,10 +126,6 @@ case "$1" in
         shift
         add_macro JTFRAME_SIM_GFXEN=0x${1#0x};;
     -fast) FAST=1;;
-    -frate)
-        shift
-        FRAMERATE=$1
-        add_macro JTFRAME_SIM_VIDEO;;
     -inputs)
         if [[ $2 != -* ]]; then
             shift
@@ -198,12 +193,13 @@ case "$1" in
         SETNAME=$1;;
     -s|-scene)
         shift
+        rename_scene_file "$1"
         SCENE="$1/dump.bin"
         if [ ! -e "$SCENE" ]; then
             SCENE="scenes/$SCENE"
         fi
         if [[ -e "$SCENE" && -x ../game/dump2bin.sh ]]; then
-            ../game/dump2bin.sh "$SCENE" 2> /dev/null
+            ../game/dump2bin.sh "$SCENE" 2> /dev/null || exit 1
             add_macro NOMAIN NOSOUND DUMP DUMP_VIDEO MAXFRAME=3 SIMSCENE
             set_zoom
             rm -rf video.bin frame_*.jpg frame.raw frames

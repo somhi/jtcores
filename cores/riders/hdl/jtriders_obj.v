@@ -19,7 +19,8 @@
 // 053244/5
 module jtriders_obj #(parameter
     RAMW   = 12,
-    HFLIP_OFFSET = 0
+    HFLIP_OFFSET = 0,
+    SHADOW = 0
 )(
     input             rst,
     input             clk,
@@ -29,8 +30,6 @@ module jtriders_obj #(parameter
     input      [ 8:0] hdump,
     input      [ 8:0] vdump,
     input             hs,
-    input             vs,
-    input             lhbl, // not an input in the original
     input             lvbl,
     input             lgtnfght,
 
@@ -68,6 +67,8 @@ module jtriders_obj #(parameter
     output     [ 7:0] dump_reg,
     input      [ 7:0] debug_bus
 );
+
+localparam SHADOW_PEN = SHADOW[0]==1 ? 4'd15 : 4'd0;
 
 wire        pre_shd;
 wire [ 3:0] pen_eff;
@@ -154,7 +155,7 @@ jt053244 #(.HFLIP_OFFSET(HFLIP_OFFSET)
     // control
     .hdump      ( hdump     ),
     .vdump      ( vdump     ),
-    .vs         ( lvbl      ), // this board uses VB here, instead of VS
+    .lvbl       ( lvbl      ),
     .hs         ( hs        ),
 
     // shadow
@@ -172,6 +173,7 @@ jt053244 #(.HFLIP_OFFSET(HFLIP_OFFSET)
 );
 
 jtframe_objdraw #(
+    .SHADOW(SHADOW),.SHADOW_PEN(SHADOW_PEN),.SW(2),
     .AW(10),.CW(16),.PW(4+10+2),.LATCH(1),.SWAPH(1),
     .ZW(12),.ZI(6),.ZENLARGE(1),
     .FLIP_OFFSET(9'h12),.KEEP_OLD(0)
