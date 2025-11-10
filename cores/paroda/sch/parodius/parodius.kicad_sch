@@ -6367,16 +6367,6 @@
 			)
 			(uuid "2084b352-01df-45b4-a36b-97add4c496dd")
 		)
-		(pin "M12" output
-			(at 365.76 105.41 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right)
-			)
-			(uuid "ed69b464-fe5e-4bb1-a24b-069f6dbbbaf3")
-		)
 		(pin "~{VCS}" input
 			(at 327.66 97.79 180)
 			(effects
@@ -6526,6 +6516,16 @@
 				(justify left)
 			)
 			(uuid "31c4df53-6360-4d36-98cd-357b6e5ce0cd")
+		)
+		(pin "M12" output
+			(at 365.76 105.41 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "81a79821-1edf-4a19-b1d2-ba071d90f2c8")
 		)
 		(instances
 			(project "parodius"

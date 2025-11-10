@@ -26832,7 +26832,7 @@
 		)
 		(uuid "903635b2-3e93-4d51-a64b-c9dc4905b0e2")
 	)
-	(hierarchical_label "GM12"
+	(hierarchical_label "M12"
 		(shape output)
 		(at 160.02 187.96 0)
 		(effects
@@ -26931,7 +26931,7 @@
 		)
 		(uuid "dc4d8ed8-077e-4b8a-ac4e-89cdeab92a61")
 	)
-	(hierarchical_label "M12"
+	(hierarchical_label "GM12"
 		(shape output)
 		(at 351.79 57.15 0)
 		(effects

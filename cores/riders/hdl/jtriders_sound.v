@@ -24,8 +24,7 @@ module jtriders_sound(
     input           cen_fm,
     input           cen_fm2,
     input           cen_pcm,
-    input           lgtnfght,
-    input           glfgreat,
+    input           lgtnfght, glfgreat, ssriders,
 
     // communication with main CPU
     input   [15:0]  main_dout,  // bus access for Punk Shot
@@ -40,23 +39,23 @@ module jtriders_sound(
     input   [ 7:0]  rom_data,
     input           rom_ok,
     // ADPCM ROM
-    output   [20:0] pcma_addr,
-    input    [ 7:0] pcma_dout,
+    output reg[20:0]pcma_addr,
+    input     [ 7:0]pcma_dout,
     output          pcma_cs,
     input           pcma_ok,
 
-    output   [20:0] pcmb_addr,
-    input    [ 7:0] pcmb_dout,
+    output reg[20:0]pcmb_addr,
+    input     [ 7:0]pcmb_dout,
     output          pcmb_cs,
     input           pcmb_ok,
 
-    output   [20:0] pcmc_addr,
-    input    [ 7:0] pcmc_dout,
+    output reg[20:0]pcmc_addr,
+    input     [ 7:0]pcmc_dout,
     output          pcmc_cs,
     input           pcmc_ok,
 
-    output   [20:0] pcmd_addr,
-    input    [ 7:0] pcmd_dout,
+    output reg[20:0]pcmd_addr,
+    input     [ 7:0]pcmd_dout,
     output          pcmd_cs,
     input           pcmd_ok,
     input    [ 5:0] snd_en,
@@ -65,13 +64,14 @@ module jtriders_sound(
 );
 `ifndef NOSOUND
 wire        [ 7:0]  cpu_dout, cpu_din,  ram_dout, fm_dout, main_dmux, k60_dout;
-wire        [20:0]  rawa_addr;
+wire        [20:0]  rawa_addr, rawb_addr, rawc_addr, rawd_addr;
 wire        [15:0]  A;
 wire signed [15:0]  fm_l,  fm_r;
 wire                m1_n, mreq_n, rd_n, wr_n, iorq_n, rfsh_n, nmi_n, tim2,
-                    cpu_cen, sample, upper4k, cen_g, int_n, cen_ws,
-                    mem_f8, mem_fa, mem_fc, mem_acc, mem_upper;
-reg                 ram_cs, fm_cs,  k60_cs,  nmi_cs;
+                    cpu_cen, sample, upper4k, int_n,
+                    cen_ws, wait_cs, wait_clr,
+                    mem_f8, mem_fa, mem_fc, mem_acc, mem_upper, skip_cen;
+reg                 ram_cs, fm_cs,  k60_cs,  nmi_cs, cen_g;
 
 assign int_n    = glfgreat ? ~tim2 : ~snd_irq;
 assign rom_addr =  A[15:0];
@@ -85,11 +85,42 @@ assign cpu_din  = rom_cs ? rom_data   :
                   ram_cs ? ram_dout   :
                   k60_cs ? k60_dout   :
                   fm_cs  ? fm_dout    : 8'h0;
-assign cen_ws   = (ram_cs | rom_cs) ? cen_4 : cen_8; // wait state for RAM/ROM access
-assign cen_g    = glfgreat ? cen_fm : cen_ws;
+assign wait_cs  = rom_cs | ram_cs;
+assign wait_clr = cen_8 & skip_cen;
+assign cen_ws   = cen_8 & ~skip_cen; // wait state for RAM/ROM access
 
-assign pcma_addr= lgtnfght ? {1'b0,rawa_addr[19:0]} : rawa_addr;
 assign main_dmux= glfgreat ? main_dout[15:8] : main_dout[7:0];
+
+always @(posedge clk) begin
+    cen_g <= (glfgreat | lgtnfght) ? cen_fm : cen_ws;
+end
+
+jtframe_edge u_wait(
+    .rst    ( rst       ),
+    .clk    ( clk       ),
+    .edgeof ( wait_cs   ),
+    .clr    ( wait_clr  ),
+    .q      ( skip_cen  )
+);
+
+always @* begin
+    pcma_addr = rawa_addr;
+    pcmb_addr = rawb_addr;
+    pcmc_addr = rawc_addr;
+    pcmd_addr = rawd_addr;
+    if(lgtnfght) begin
+        pcma_addr[20:19]=0;
+        pcmb_addr[20:19]=0;
+        pcmc_addr[20:19]=0;
+        pcmd_addr[20:19]=0;
+    end
+    if(glfgreat | ssriders ) begin
+        pcma_addr[20]=0;
+        pcmb_addr[20]=0;
+        pcmc_addr[20]=0;
+        pcmd_addr[20]=0;
+    end
+end
 
 always @(*) begin
     k60_cs    = 0;
@@ -130,7 +161,7 @@ jtframe_edge #(.QSET(0),.ATRST(0)) u_edge (
 );
 
 /* verilator tracing_off */
-jtframe_sysz80 #(`ifdef SND_RAMW .RAM_AW(`SND_RAMW), `endif .CLR_INT(1),.RECOVERY(0)) u_cpu(
+jtframe_sysz80 #(.RAM_AW(11), .CLR_INT(1), .RECOVERY(1)) u_cpu(
     .rst_n      ( ~rst      ),
     .clk        ( clk       ),
     .cen        ( cen_g     ),
@@ -203,15 +234,15 @@ jt053260 u_k53260(
     .roma_data  ( pcma_dout ),
     .roma_cs    ( pcma_cs   ),
 
-    .romb_addr  ( pcmb_addr ),
+    .romb_addr  ( rawb_addr ),
     .romb_data  ( pcmb_dout ),
     .romb_cs    ( pcmb_cs   ),
 
-    .romc_addr  ( pcmc_addr ),
+    .romc_addr  ( rawc_addr ),
     .romc_data  ( pcmc_dout ),
     .romc_cs    ( pcmc_cs   ),
 
-    .romd_addr  ( pcmd_addr ),
+    .romd_addr  ( rawd_addr ),
     .romd_data  ( pcmd_dout ),
     .romd_cs    ( pcmd_cs   ),
     // sound output - raw

@@ -147,7 +147,6 @@ func dump_cpp(def map[string]string) {
     expected := map[string]bool{
         "JTFRAME_CLK24": false,
         "JTFRAME_CLK48": false,
-        "JTFRAME_CLK96": false,
         "JTFRAME_SDRAM96": false,
     }
     for k, v := range def {
@@ -190,6 +189,9 @@ func dump_verilog(def map[string]string, fmtstr string, esc_quotes bool) {
                     fmt.Printf("Error in %s definition (%s) when converting to integer: ", k, v )
                     fmt.Println( e )
                     os.Exit(1)
+                }
+                if macros.IsSet("NCVERILOG") {
+                    apost="'"
                 }
                 if vint < 512 {
                     v = "9"+apost+"d"+v

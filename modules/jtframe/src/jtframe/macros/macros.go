@@ -1,19 +1,19 @@
 /*  This file is part of JTFRAME.
-    JTFRAME program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+	JTFRAME program is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
 
-    JTFRAME program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+	JTFRAME program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with JTFRAME.  If not, see <http://www.gnu.org/licenses/>.
+	You should have received a copy of the GNU General Public License
+	along with JTFRAME.  If not, see <http://www.gnu.org/licenses/>.
 
-    Author: Jose Tejada Gomez. Twitter: @topapate
-    Date: 4-1-2025 */
+	Author: Jose Tejada Gomez. Twitter: @topapate
+	Date: 4-1-2025 */
 
 package macros
 
@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,8 +30,8 @@ import (
 	"strings"
 	"time"
 
-    "jotego/jtframe/betas"
-    . "jotego/jtframe/common"
+	"jotego/jtframe/betas"
+	. "jotego/jtframe/common"
 )
 
 // returns true if the .def file section changes
@@ -113,6 +114,7 @@ func MakeMacros(core, target string, extra... string) {
 	clean_osd_macro()
 	check_colorw()
 	mclk := make_clocks(target)
+	set_sdram_refresh_rate( int64(mclk) )
 	add_subcarrier_clk( int64(mclk) )
 	make_beta_macros(core, target)
 }
@@ -252,7 +254,8 @@ func fill_defaults(core, target string) {
 		"JTFRAME_DEBUG_VPOS":    "4",
 		"JTFRAME_DIALEMU_LEFT":  "5",
 		"JTFRAME_DIPBASE":      "16",
-		"JTFRAME_SHIFT":	     "0",
+		"JTFRAME_SHIFT":         "0",
+		"JTFRAME_MR_FASTIO":     "0",
 		"JTFRAME_SIGNED_SND":    "1",
 		"JTFRAME_TIMESTAMP":fmt.Sprintf("%d", time.Now().Unix()),
 		"CORENAME": core,
@@ -261,6 +264,9 @@ func fill_defaults(core, target string) {
 	}
 	if IsSet("JTFRAME_JOY1_POS") {
 		default_values["JTFRAME_DIPBASE"]="20"
+	}
+	if !IsSet(JTFRAME_RELEASE) {
+		default_values["JTFRAME_NO_ANALOGIZER"]=""
 	}
 	for key,val := range default_values {
 		if !IsSet(key) {
@@ -339,7 +345,7 @@ func make_clocks(target string) (mclk int) {
 	} else {
 		Set("JTFRAME_PLL6000","")
 	}
-	if IsSet("JTFRAME_CLK96") || IsSet("JTFRAME_SDRAM96") {
+	if IsSet("JTFRAME_SDRAM96") {
 		mclk *= 2
 	}
 	Set("JTFRAME_MCLK", fmt.Sprintf("%d",mclk))
@@ -369,6 +375,15 @@ func check_colorw() {
 	if colorw<4 || colorw>8 {
 		log.Fatal("JTFRAME: macro JTFRAME_COLORW must be between 4 and 8")
 	}
+}
+
+func set_sdram_refresh_rate( mclk int64 ) {
+	const freq_64us = float64(128000)
+	divider := float64(mclk) / freq_64us
+	bitwidth := int(math.Ceil(math.Log2(divider)))
+	Set("JTFRAME_RFSH_WC",fmt.Sprintf("%d",bitwidth))
+	Set("JTFRAME_RFSH_N", fmt.Sprintf("%d'd1",bitwidth))
+	Set("JTFRAME_RFSH_M", fmt.Sprintf("%d'd%.0f",bitwidth,divider))
 }
 
 func add_subcarrier_clk( mclk int64 ) {

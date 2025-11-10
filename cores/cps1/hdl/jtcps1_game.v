@@ -62,11 +62,7 @@ wire        cfg_we;
 // EEPROM
 wire        sclk, sdi, sdo, scs;
 
-`ifndef SIMULATION
-    assign { dipsw_c, dipsw_b, dipsw_a } = dipsw[23:0];
-`else
-assign { dipsw_c, dipsw_b, dipsw_a } = ~24'd0;
-`endif
+assign { dipsw_c, dipsw_b, dipsw_a } = dipsw[23:0];
 
 wire [15:0] fave;
 wire [ 1:0] dsn;
@@ -76,16 +72,7 @@ wire        charger;
 wire        turbo, video_flip, filter_old;
 reg         rst_game;
 
-`ifdef JTCPS_TURBO
-assign turbo = 1;
-`else
-    `ifdef MISTER
-        assign turbo = status[13] | cpu_speed;
-    `else
-        assign turbo = status[5] | cpu_speed;
-    `endif
-`endif
-
+`include "turbo.vh"
 assign snd_vu       = 0;
 assign filter_old   = dipsw[24];
 assign debug_view   = debug_bus[0] ? fave[7:0] : fave[15:8];
@@ -378,6 +365,7 @@ assign snd_addr   = 0;
 assign snd_cs     = 0;
 assign snd_left   = 0;
 assign snd_right  = 0;
+assign snd_peak   = 0;
 assign adpcm_addr = 0;
 assign adpcm_cs   = 0;
 assign sample     = 0;

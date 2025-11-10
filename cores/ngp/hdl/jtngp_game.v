@@ -29,7 +29,7 @@ reg  [ 7:0] st_mux;
 reg  [ 3:0] cart_size;
 wire        gfx_cs,
             flash0_cs, flash0_rdy, flash0_ok,
-            flash1_cs, flash1_rdy, flash1_ok, f1g_gcs;
+            flash1_cs, flash1_rdy, flash1_ok, f1g_gcs, pwr_press;
 wire        snd_ack, snd_nmi, snd_irq, mute_enb, snd_rstn, ioctl_rest, mode;
 wire        hirq, virq, main_int5, pwr_button, poweron, halted;
 reg         cart_l;
@@ -40,13 +40,12 @@ assign ioctl_rest = ioctl_ram && ioctl_wr && ioctl_addr[13:0]>14'h3000; // ports
 assign rom_addr = cpu_addr[15:1];
 assign dip_flip = 0;
 assign {pxl_cen,pxl2_cen}={v1_cen,v0_cen}; // ideally the framework should do this for me
-assign pwr_button = coin[0] & ~&{~ioctl_cart,cart_l,halted}; // active low, positive edge triggered
+assign pwr_button = pwr_press & ~&{~ioctl_cart,cart_l,halted}; // active low, positive edge triggered
 // Flash 1 is only operative for 4 MByte cartridges
 assign f1g_gcs  = cart_size[3] & flash1_cs;
 assign f1g_dout = cart_size[3] ? flash1_dout : 16'd0;
 
 `ifdef CARTSIZE initial cart_size=`CARTSIZE; `endif
-
 always @(posedge clk) begin
     if( ioctl_cart && !cart_l ) cart_size <= 0;
     if( prog_ba==1 && !ioctl_ram && ioctl_wr ) begin
@@ -73,6 +72,8 @@ always @(posedge clk) begin
 end
 
 assign ioctl_din = ioctl_addr[7] ? ioctl_pal : ioctl_main;
+
+jtngp_pwr u_power_onoff(rst, clk, VS, coin[0], pwr_press);
 
 /* verilator tracing_on */
 jtngp_main u_main(

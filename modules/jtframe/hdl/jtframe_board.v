@@ -253,10 +253,15 @@ wire [ 3:0] bax_rdy, bax_dst;
 wire [SDRAMW-1:0] bax_addr;
 
 wire LHBLs;
+reg  prog_en;
 
 assign sensty    = status[33:32]; // MiST should drive these pins
 assign joy1_pos  = status[19:18];
-assign gun_crossh_en = status[9];
+assign gun_crossh_en = `ifdef JTFRAME_LIGHTGUN_ON 1'b1; `else status[9]; `endif
+
+always @(posedge clk_rom) begin
+    prog_en <= dwnld_busy | ioctl_cart;
+end
 
 jtframe_coremod u_coremod(
     .core_mod       ( core_mod      ),
@@ -830,6 +835,17 @@ jtframe_crosshair #(.COLORW(COLORW)) u_crosshair(
     end
 `endif
 
+wire [1:0] rfsh;
+
+// Automatic JTFRAME macros set a 64us refresh period
+jtframe_frac_cen #(.WC(`JTFRAME_RFSH_WC)) u_rfsh(
+    .clk    ( clk_rom           ),
+    .n      ( `JTFRAME_RFSH_N   ),
+    .m      ( `JTFRAME_RFSH_M   ),
+    .cen    ( rfsh              ),
+    .cenb   (                   )
+);
+
 // support for 48MHz
 // Above 64MHz HF should be 1. SHIFTED depends on whether the SDRAM
 // clock is shifted or not.
@@ -890,7 +906,7 @@ jtframe_sdram64 #(
     .dst        ( bax_dst       ),
 
     // ROM-load interface
-    .prog_en    ( dwnld_busy | ioctl_cart ),
+    .prog_en    ( prog_en       ),
     .prog_addr  ( prog_addr     ),
     .prog_ba    ( prog_ba       ),
     .prog_rd    ( prog_rd       ),
@@ -918,7 +934,7 @@ jtframe_sdram64 #(
 
     // Common signals
     .dout       ( sdram_dout    ),
-    .rfsh       ( ~LHBLs        )
+    .rfsh       ( rfsh[0]       )
 );
 
 `ifdef SIMULATION

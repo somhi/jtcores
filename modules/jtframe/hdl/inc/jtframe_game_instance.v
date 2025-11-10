@@ -18,7 +18,13 @@
 
 // Game instantiation. Shared by all target top-level modules
 
+
 localparam STARTW=4;
+
+wire [16:0]  sram_addr;
+wire [15:0]  sram_din, sram_dout;
+wire [ 1:0]  sram_dsn;
+wire         sram_wen, sram_ok;
 
 `ifdef SIMULATION
 assign sim_hb         = ~LHBL;
@@ -49,16 +55,6 @@ assign sim_dwnld_busy = dwnld_busy;
     `define JTFRAME_SIM_DIPS ~32'd0
 `endif
 `endif
-
-// `ifndef JTFRAME_LF_BUFFER
-//     assign game_vrender = 0,
-//            game_hdump   = 0,
-//            ln_addr      = 0,
-//            ln_data      = 0,
-//            ln_done      = 0,
-//            ln_we        = 0;
-// `endif
-
 
 `GAMETOP
 u_game(
@@ -120,6 +116,8 @@ u_game(
     .ln_hs        ( ln_hs            ),
     .ln_pxl       ( ln_pxl           ),
     .ln_v         ( ln_v             ),
+    .ln_vs        ( ln_vs            ),
+    .ln_lvbl      ( ln_lvbl          ),
     .ln_we        ( ln_we            ), `endif
 
     // Bank 0: allows R/W
@@ -148,6 +146,16 @@ u_game(
     .prog_dok   ( prog_dok      ),
     .prog_dst   ( prog_dst      ),
     .prog_data  ( prog_data     ),
+
+`ifdef JTFRAME_SRAM
+    // SRAM
+    .sram_addr  ( sram_addr     ),
+    .sram_din   ( sram_din      ),
+    .sram_dout  ( sram_dout     ),
+    .sram_wen   ( sram_wen      ),
+    .sram_dsn   ( sram_dsn      ),
+    .sram_ok    ( sram_ok       ),
+`endif
 
     // common ROM-load interface
     .prog_addr  ( prog_addr     ),

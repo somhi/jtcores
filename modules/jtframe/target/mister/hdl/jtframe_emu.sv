@@ -62,6 +62,7 @@ module emu
     input  [11:0] HDMI_HEIGHT,
     output        HDMI_FREEZE,
     output        HDMI_BLACKOUT,
+    output        HDMI_BOB_DEINT,
 
     //Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
     output [12:0] VIDEO_ARX,
@@ -185,6 +186,7 @@ assign VGA_SCALER    = 0;
 assign VGA_DISABLE   = 0;
 assign HDMI_FREEZE   = 0;
 assign HDMI_BLACKOUT = 0;
+assign HDMI_BOB_DEINT= 0;
 assign AUDIO_MIX     = 0;
 assign BUTTONS       = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
@@ -271,11 +273,7 @@ jtframe_rst_sync u_reset24(
     assign clk_sys = clk96;
 `else
     assign clk_rom = clk48;
-    `ifdef JTFRAME_CLK96
-    assign clk_sys = clk96;
-    `else
     assign clk_sys = clk48;
-    `endif
 `endif
 
 assign clk_pico = clk48;
@@ -387,7 +385,7 @@ assign AUDIO_S = `JTFRAME_SIGNED_SND;
 // Line-Frame buffer
 wire [ 8:0] game_hdump,   ln_addr;
 wire [ 7:0] game_vrender, ln_v;
-wire        ln_done, ln_hs, ln_we;
+wire        ln_done, ln_hs, ln_vs, ln_lvbl, ln_we;
 wire [15:0] ln_pxl, ln_data;
 
 jtframe_mister #(
@@ -444,6 +442,8 @@ u_frame(
     .ln_hs          ( ln_hs          ),
     .ln_pxl         ( ln_pxl         ),
     .ln_v           ( ln_v           ),
+    .ln_vs          ( ln_vs          ),
+    .ln_lvbl        ( ln_lvbl        ),
     .ln_we          ( ln_we          ),
 
     `ifdef JTFRAME_VERTICAL

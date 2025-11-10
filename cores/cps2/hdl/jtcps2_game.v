@@ -78,19 +78,14 @@ wire        cpu_cen, cpu_cenb;
 wire        turbo, skip_en, video_flip;
 reg         rst_game;
 
-`ifdef JTCPS_TURBO
-assign turbo = 1;
-`else
-assign turbo = status[6];
-`endif
-
+`include "turbo.vh"
 assign skip_en  = status[7];
 assign snd_vu   = 0;
 assign snd_peak = 0;
 
 assign ba1_din=0, ba2_din=0, ba3_din=0,
        ba1_dsn=3, ba2_dsn=3, ba3_dsn=3;
-
+/* verilator tracing_off */
 // CPU clock enable signals come from 48MHz domain
 jtframe_cen48 u_cen48(
     .clk        ( clk48         ),
@@ -117,10 +112,6 @@ assign rst_gfx = rst;
 
 always @(posedge clk) rst_game <= hold_rst | rst48;
 
-// reg [1:0] aux;
-// assign cpu_cen = cen12;
-// always @(posedge clk48 ) aux<={ aux[0], cen12};
-// assign cpu_cenb = aux==2'b10;
 
 localparam REGSIZE=24;
 
@@ -408,7 +399,7 @@ jtcps15_sound u_sound(
     assign qsnd_cs   = 0;
     assign qsnd_addr = 0;
 `endif
-
+/* verilator tracing_on */
 jtcps1_sdram #(.CPS(2), .REGSIZE(REGSIZE)) u_sdram (
     .rst         ( rst_sdram     ),
     .clk         ( clk           ),

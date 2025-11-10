@@ -88,7 +88,7 @@ module jtsimson_video(
     output     [ 7:0] st_dout
 );
 
-localparam FULLOBJ = `ifdef SURATK 1 `else 0 `endif;
+localparam FULLOBJ = `ifdef PARODA 1 `else 0 `endif;
 
 wire [ 8:0] hdump, vdump, vrender, vrender1;
 wire [ 7:0] lyrf_pxl, st_scr,
@@ -215,14 +215,13 @@ wire [9:0] voffset = simson ? 10'h117 : 10'h107;
 jtsimson_obj #(.RAMW(ORAMW)) u_obj(    // sprite logic
     .voffset    ( voffset   ),
     .simson     ( simson    ),
+    .ln_done    (           ),
 `else
 assign obj_shd[1] = 1'b0;
 jtriders_obj #(
     .RAMW         ( ORAMW   ),
     .HFLIP_OFFSET ( 10'd134 )
-`ifdef SURATK
    ,.SHADOW       ( 1       )
-`endif
 ) u_obj(
     .lgtnfght   ( 1'b0      ),
 `endif

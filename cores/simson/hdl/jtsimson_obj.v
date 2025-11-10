@@ -26,10 +26,13 @@ module jtsimson_obj #(parameter
     // it is never changed. Other register functions are unknown
     // so I am leaving it static for now
     K55673_DESC_SORT = 0,
+    // Set high to trigger DMA on the edge dma_en signal
+    EDGE_TRIGGER = 0,
     parameter [9:0] HOFFSET   = 10'd62
 )(
     input             rst,
     input             clk,
+    output            ln_done,
 
     input             pxl_cen,
     input             pxl2_cen,
@@ -118,7 +121,7 @@ assign cpu_din   = !objcha_n ? rmrd_addr[1] ? rom_data[31:16] : rom_data[15:0] :
 // 053244 (parodius) has 7 palette bits, top 2 used for priority
 assign pen15   = &pre_pxl[3:0];
 assign pen_eff = (pre_pxl[15:14]==0 || !pen15) ? pre_pxl[3:0] : 4'd0; // real color or 0 if shadow
-assign shd     =  pre_pxl[15:14] & {2{pen15}};
+assign shd     =  pre_pxl[15:14];
 assign prio    =  pre_pxl[13:9];
 assign pxl     =  gfx_en[3] ? {pre_pxl[8:4], pen_eff} : 9'd0;
 
@@ -130,6 +133,7 @@ assign sorted = PACKED==1 ? sort_packed : rom_data;
 jt053246 #(
     .K55673          ( K55673           ),
     .K55673_DESC_SORT( K55673_DESC_SORT ),
+    .EDGE_TRIGGER    ( EDGE_TRIGGER     ),
     .HOFFSET         ( HOFFSET          )
 ) u_scan (    // sprite logic
     .rst        ( rst       ),
@@ -138,6 +142,7 @@ jt053246 #(
     .pxl_cen    ( pxl_cen   ),
     .simson     ( simson    ),
 
+    .ln_done    ( ln_done   ),
     .voffset    ( voffset   ),
     // CPU interface
     .cs         ( reg_cs    ),

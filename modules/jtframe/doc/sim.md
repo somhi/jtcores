@@ -44,7 +44,7 @@ set_global_assignment -name VERILOG_MACRO "JTFRAME_MIST_DIRECT=0"
 ```
 
 ## MiSTer
-In order to preserve the 8-bit ROM download interface with MiST, _jtframe_mister_ presents it too. However it can operate internally with 16-bit packets if the macro **JTFRAME_MR_FASTIO** is set to 1. This has only been tested with 96MHz clock. Indeed, if **JTFRAME_CLK96** is defined and **JTFRAME_MR_FASTIO** is not, then it will be defined to 1.
+In order to preserve the 8-bit ROM download interface with MiST, _jtframe_mister_ presents it too. However it can operate internally with 16-bit packets if the macro **JTFRAME_MR_FASTIO** is set to 1. This has only been tested with the 96MHz clock.
 
 The measured speed for data transfers in MiSTer is about 1.2MHz (800ns) per request. If **JTFRAME_MR_FASTIO** is set, each request is 16-bit words, otherwise, 8 bits.
 
@@ -97,17 +97,22 @@ The script `run_regression.sh` is used for automatic regressions triggered by Gi
 The script `run_regression.sh` runs a simulation using `jtsim` according to the options defined in a configuration file located in `<core>/cfg`, called `reg.yaml`. In this file, you can specify the same options available when using `jtsim`. The syntax is as follows:
 
 ```yaml
-<setname_1>:
+1942:
     video: number
-    inputs: file
+    inputs: reg.cab
     dipsw: binary_number
     d: MACRO1
     d: MACRO2
     ...
+1942-flip:
+    inputs: ../setname1/reg.cab
+    dipsw: ef77
 ...
-<setname_n>:
+higemaru:
     ...
 ```
+
+You can simulate the same setname with different options by adding a suffix after the setname using a hyphen to separate them, such as in `1942-flip`
 
 > [!NOTE]
 > GitHub uses these configuration files to decide which setnames will be executed during regression. Any setnames not included in these files will be skipped. If you want a setname to be triggered without options, just type <setname>: without any additional fields.

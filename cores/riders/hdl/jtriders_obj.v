@@ -86,7 +86,6 @@ wire        hflip, vflip, hz_keep, pre_cs;
 wire [ 9:0] hpos;
 wire [ 3:0] ysub;
 wire [11:0] hzoom;
-wire [31:0] sorted;
 wire        pen15;
 
 wire scr_hflip, scr_vflip;
@@ -97,7 +96,7 @@ endfunction
 
 assign rom_cs    = ~objcha_n | pre_cs;
 assign rom_addr  = !objcha_n ? rmrd_addr[21:2] :
-    { 1'd0, pre_addr[20:13], paroda_conv(pre_addr[12:7]), pre_addr[5], pre_addr[6],  pre_addr[4:2] };
+    { pre_addr[21], pre_addr[20:13], paroda_conv(pre_addr[12:7]), pre_addr[5], pre_addr[6],  pre_addr[4:2] };
 
 assign cpu_din   = !objcha_n ? rmrd_addr[1] ? rom_data[31:16] : rom_data[15:0] :
                     ram_data;
@@ -116,11 +115,9 @@ assign dma_addr  = lgtnfght ? {scn_addr[10:4],2'b00,scn_addr[3:1],1'b0} : scn_ad
 // 053244 (parodius) has 7 palette bits, top 2 used for priority
 assign pen15   = &pre_pxl[3:0];
 assign pen_eff = (pre_pxl[15:14]==0 || !pen15) ? pre_pxl[3:0] : 4'd0; // real color or 0 if shadow
-assign shd     =  pre_pxl[14] & pen15;
+assign shd     =  pre_pxl[14];
 assign prio    =  {1'd1,pre_pxl[10:9],2'd0} ;
 assign pxl     = gfx_en[3] ? {pre_pxl[8:4], pen_eff} : 9'd0;
-
-assign sorted = rom_data;
 
 jt053244 #(.HFLIP_OFFSET(HFLIP_OFFSET)
     )u_scan(    // sprite logic
@@ -201,7 +198,7 @@ jtframe_objdraw #(
     .rom_addr   ( pre_addr      ),
     .rom_cs     ( pre_cs        ),
     .rom_ok     ( rom_ok        ),
-    .rom_data   ( sorted        ),
+    .rom_data   ( rom_data      ),
 
     .pxl        ( pre_pxl       )
 );

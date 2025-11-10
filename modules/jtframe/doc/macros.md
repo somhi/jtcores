@@ -45,8 +45,8 @@ JTFRAME_LIGHTGUN         |         | Enables the crosshair overlay
 JTFRAME_LIGHTGUN_ON      |         | Used with JTFRAME_LIGHTGUN, forces crosshair overlay onscreen
 JTFRAME_LIGHTGUN_XOFFSET |         | Used with JTFRAME_LIGHTGUN, adds a 9 bit correction value to lightgun X coordinate sent to core
 JTFRAME_LIGHTGUN_YOFFSET |         | Used with JTFRAME_LIGHTGUN, adds a 9 bit correction value to lightgun Y coordinate sent to core
-JTFRAME_LF_BUFFER        |         | Enables the line-based frame buffer for objects
-JTFRAME_LFBUF_CLR        |         | Sets the line clear value for the frame buffer. 0 by default.
+JTFRAME_LF_BUFFER        |         | Enables the line-based frame buffer
+JTFRAME_LF_FULLV         |         | Render blanking lines for line-based frame buffer (makes frame longer to process)
 JTFRAME_LF_SDRAM_BUFFER  | sidi128 | The line-based frame buffer (JTFRAME_LF_BUFFER) is implemented in the second SDRAM
 JTFRAME_LITE_KEYBOARD    |         | Disables automatic MAME keys mapping
 JTFRAME_LOGO_NOHEX       | Pocket  | Do not display the chip ID on the logo screen
@@ -61,6 +61,7 @@ JTFRAME_MOUSE_NOEMU      |         | Disables mouse emulation via joystick
 JTFRAME_MR_DDR           | MiSTer  | Defined internally. Do not define manually.
 JTFRAME_MR_DDRLOAD       | MiSTer  | ROM download process uses the DDR as proxy
 JTFRAME_MR_FASTIO        | MiSTer  | 16-bit ROM load in MiSTer. Set by default if CLK96 is set
+JTFRAME_NO_ANALOGIZER    | Pocket  | Disables analog video output and SNAC controllers through cartridge pins. Defined by default if JTFRAME_RELEASE is not defined
 JTFRAME_NO_DB15          | MiSTer  | Disables DB15 controller modules
 JTFRAME_NOSTA            |         | jtcore will not check STA and will produce a PASS regardless of it
 JTFRAME_NOHOLDBUS        |         | Reduces bus noise (non-interleaved SDRAM controller)
@@ -77,8 +78,12 @@ JTFRAME_PADDLE_MAX       |         | Maximum paddle value used by jtframe_paddle
 JTFRAME_PLL              |         | PLL module name to be used. PLL names must end in the pixel clock frequency in kHz
 JTFRAME_PXLCLK           |         | 6 or 8. Defines de pixel clock. See [clocks](clocks.md)
 JTFRAME_RELEASE          |         | Disables debug control via keyboard
+JTFRAME_RFSH_WC          |         | Automatic. Used by SDRAM refresh in jtframe_board
+JTFRAME_RFSH_N           |         | Automatic. Used by SDRAM refresh in jtframe_board
+JTFRAME_RFSH_M           |         | Automatic. Used by SDRAM refresh in jtframe_board
 JTFRAME_ROTATE           |         | Enables more rotate options in the OSD
 JTFRAME_SCAN2X_NOBLEND   | MiST    | Disables pixel blending
+JTFRAME_SRAM             | Pocket  | Enables SRAM ports at the game module
 JTFRAME_SDRAM96          |         | SDRAM is clocked at 96MHz and the clk input of game is 96MHz
 JTFRAME_SHADOW           | MiSTer  | Start address for SDRAM shadowing and dump as NVRAM
 JTFRAME_SHADOW_LEN       | MiSTer  | Length in bits of the shadowing. See [sdram.md](sdram.md)
@@ -112,6 +117,7 @@ different underlying modules.
 
 Macro                    | Target  |  Usage
 -------------------------|---------|----------------------
+JTFRAME_VZ80             |         | Selects the Verilog translation of T80 VHDL code
 JTFRAME_J68              |         | Selects J68_CPU as M68000 module (default fx68k)
 
 # SDRAM Banks

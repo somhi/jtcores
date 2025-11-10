@@ -22,7 +22,7 @@ module jtriders_video(
     input             pxl_cen,
     input             pxl2_cen,
 
-    input             ssriders, lgtnfght, glfgreat,
+    input             ssriders, lgtnfght, glfgreat, tmnt2,
     output            cpu_n, enc_done,
 
     // Base Video
@@ -106,6 +106,14 @@ module jtriders_video(
 
     output     [10:1] line_addr,
     input      [15:0] line_dout,
+
+    output     [17:1] t2x2_addr,
+    output     [15:0] t2x2_din,
+    output     [ 1:0] t2x2_we,
+    output     [17:1] tmap_addr,
+    input             tmap_ok,
+    input      [15:0] tmap_dout,
+
     // Color
     input      [ 2:0] dim,
     input             dimmod,
@@ -125,6 +133,9 @@ module jtriders_video(
     output     [ 7:0] st_dout
 );
 
+localparam SHADOW = `ifdef NOSHADOW 0 `else 1 `endif;
+
+wire [31:0] sort_f, sort_a, sort_b;
 wire [21:2] lyro_prea;
 wire [15:0] cpu_saddr, dump_addr;
 wire [12:0] pre_f, pre_a, pre_b, ocode;
@@ -148,11 +159,19 @@ assign cpu_saddr = skip12 ? { cpu_addr[16:15], cpu_dsn[1], cpu_addr[14:13], cpu_
 assign cpu_d8    = ~cpu_dsn[1] ? cpu_dout[15:8] : cpu_dout[7:0];
 // Object ROM address MSB might come from a RAM
 assign oaread_addr = lyro_prea[21:13];
-assign lyro_addr   = oaread_en ? {1'b0,oaread_dout, lyro_prea[12:2]} :
-                                 {1'b0,lyro_prea[20:2]};
+assign lyro_addr   = { tmnt2 & lyro_prea[21], lyro_prea[20:2] };
 assign lyro_cs     = lyro_precs;
 assign dump_other  = {2'd0,dimpol, dimmod, 1'b0, dim};
 assign cpu_n       = hdump[0]; // to be verified
+
+assign sort_f = sort_glfgreat(lyrf_data);
+assign sort_a = sort_glfgreat(lyra_data);
+assign sort_b = sort_glfgreat(lyrb_data);
+
+function [31:0] sort_glfgreat( input [31:0] raw);
+    sort_glfgreat = raw;
+    if(glfgreat) sort_glfgreat[23:8] = {raw[15:8],raw[23:16]};
+endfunction
 
 always @(posedge clk) begin
     skip12 <= lgtnfght | glfgreat;
@@ -259,11 +278,11 @@ jtaliens_scroll #(
     .lyra_cs    ( lyra_cs   ),
     .lyrb_cs    ( lyrb_cs   ),
 
-    .lyrf_data  ( lyrf_data ),
-    .lyra_data  ( lyra_data ),
-    .lyrb_data  ( lyrb_data ),
+    .lyrf_data  ( sort_f    ),
+    .lyra_data  ( sort_a    ),
+    .lyrb_data  ( sort_b    ),
 
-    .lyra_ok    ( lyra_ok ),
+    .lyra_ok    ( lyra_ok   ),
 
     // Final pixels
     .lyrf_blnk_n(lyrf_blnk_n),
@@ -301,7 +320,6 @@ jtriders_psac u_psac(
     .enc_done   ( enc_done  ),
 
     .pxl_cen    ( pxl_cen   ),
-    .enable     ( glfgreat  ),
     .tmap_bank  ( psac_bank ),
     .hdump      ( hdump     ),
 
@@ -328,6 +346,12 @@ jtriders_psac u_psac(
     .line_addr  ( line_addr ),
     .line_dout  ( line_dout ),
 
+    .t2x2_addr  ( t2x2_addr ),
+    .t2x2_din   ( t2x2_din  ),
+    .t2x2_we    ( t2x2_we   ),
+    .tmap_addr  ( tmap_addr ),
+    .tmap_ok    ( tmap_ok   ),
+    .tmap_dout  ( tmap_dout ),
     // Tiles
     .rom_addr   ( psc_addr  ),
     .rom_data   ( psc_data  ),
@@ -340,7 +364,8 @@ jtriders_psac u_psac(
 );
 `else
 assign psc_cs=0,psclo_cs=0,pschi_cs=0,psc_pxl=0, line_addr=0,
-    pschi_addr=0, psclo_addr=0,psc_addr=0,enc_done=0,psac_mmr=0;
+    pschi_addr=0, psclo_addr=0,psc_addr=0,enc_done=0,psac_mmr=0,
+    t2x2_addr=0,t2x2_din=0,t2x2_we=0,tmap_addr=0;
 `endif
 
 wire [ 1:0] lyro_pri;
@@ -355,8 +380,8 @@ assign orama = lgtnfght ? cpu_addr[13:1] : oram_addr;
 assign oramd = lgtnfght ? cpu_dout : oram_din;
 assign oramw = lgtnfght ? {2{cpu_we}}&~cpu_dsn : oram_we;
 assign vmux  = vrender;
-/* verilator tracing_off */
-jtriders_obj #(.RAMW(13),.HFLIP_OFFSET(10'd325)) u_obj(    // sprite logic
+/* verilator tracing_on */
+jtriders_obj #(.RAMW(13),.HFLIP_OFFSET(10'd325),.SHADOW(SHADOW)) u_obj(    // sprite logic
     .rst        ( rst       ),
     .clk        ( clk       ),
     .pxl_cen    ( pxl_cen   ),

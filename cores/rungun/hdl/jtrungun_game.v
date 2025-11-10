@@ -21,19 +21,33 @@ module jtrungun_game(
 );
 
 wire [23:0] psrm_dout;
+wire [12:1] cpu_addr;
 wire [15:0] omem_dout;
 wire [ 7:0] vtimer_mmr, st_main, st_snd, pair_dout;
 wire [ 3:0] psac_bank;
 wire        lrsw, psac_cs, ccu_cs, disp, gvflip, ghflip, pri, cpu_rnw, pair_we,
             sdon, objrg_cs, objrm_cs, objcha_n, dma_bsy;
+reg         rst_main, rst_snd, rst_video;
+
 
 assign debug_view={7'd0,dma_bsy};
 assign dip_flip = ghflip ^ gvflip;
 assign psrm_dout = {psac2_dout,psac01_dout};
+
+always @(posedge clk48) begin
+    rst_main  <= rst48;
+    rst_snd   <= rst48;
+end
+
+always @(posedge clk) begin
+    rst_video <= rst;
+end
+
 /* verilator tracing_on */
 jtrungun_main u_main(
-    .rst            ( rst           ),
-    .clk            ( clk           ),
+    .rst            ( rst48         ),
+    .clk            ( clk48         ),
+    .clk96          ( clk96         ),
     .pxl_cen        ( pxl_cen       ),
     .lvbl           ( LVBL          ),
 
@@ -51,7 +65,8 @@ jtrungun_main u_main(
     .psac_bank      ( psac_bank     ),
     .vtimer_mmr     ( vtimer_mmr    ),
 
-    .main_addr      ( main_addr     ),
+    .cpu_addr       ( cpu_addr      ),
+    .rom_addr       ( main_addr     ),
     .rom_data       ( main_data     ),
     .rom_cs         ( main_cs       ),
     .rom_ok         ( main_ok       ),
@@ -111,7 +126,7 @@ jtrungun_main u_main(
 );
 /* verilator tracing_off */
 jtrungun_sound u_sound(
-    .rst            ( rst           ),
+    .rst            ( rst_snd       ),
     .clk            ( clk48         ),
     .cen_8          ( cen_8         ),
     .cen_pcm        ( cen_pcm       ),
@@ -119,7 +134,7 @@ jtrungun_sound u_sound(
     // communication with main CPU
     .main_dout      ( cpu_dout[15:8]),  // bus access for Punk Shot
     .pair_dout      ( pair_dout     ),
-    .main_addr      ( main_addr[4:1]),
+    .main_addr      ( cpu_addr[4:1] ),
     .pair_we        ( pair_we       ),
 
     .snd_irq        ( sdon          ),
@@ -146,7 +161,7 @@ jtrungun_sound u_sound(
 );
 /* verilator tracing_on */
 jtrungun_video u_video(
-    .rst            ( rst           ),
+    .rst            ( rst_video     ),
     .clk            ( clk           ),
     .pxl_cen        ( pxl_cen       ),
     .pxl2_cen       ( pxl2_cen      ),
@@ -166,7 +181,7 @@ jtrungun_video u_video(
     // CPU interface
     .ccu_cs         ( ccu_cs        ),   // timer
     .psac_cs        ( psac_cs       ),
-    .addr           (main_addr[12:1]),
+    .addr           ( cpu_addr      ),
     .rnw            ( cpu_rnw       ),
     .cpu_dout       ( cpu_dout      ),
     .cpu_dsn        ( ram_dsn       ),
@@ -210,6 +225,8 @@ jtrungun_video u_video(
     .ln_addr        ( ln_addr       ),
     .ln_data        ( ln_data       ),
     .ln_done        ( ln_done       ),
+    .ln_vs          ( ln_vs         ),
+    .ln_lvbl        ( ln_lvbl       ),
     .ln_hs          ( ln_hs         ),
     .ln_pxl         ( ln_pxl        ),
     .ln_v           ( ln_v          ),

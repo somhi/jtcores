@@ -19,7 +19,7 @@
 module jtriders_psac(
     input              rst, clk,
                        pxl_cen,  // use cen instead (see below)
-                       hs, vs, dtackn, enable,
+                       hs, vs, dtackn,
                        cs, // cs always writes
     input       [ 8:0] hdump,
 
@@ -50,33 +50,39 @@ module jtriders_psac(
     output      [ 7:0] pxl,
     output             enc_done,
 
+    // Tilemap 2x2
+    output      [17:1] t2x2_addr,
+    output      [15:0] t2x2_din,
+    output      [ 1:0] t2x2_we,
+    output      [17:1] tmap_addr,
+    input              tmap_ok,
+    input       [15:0] tmap_dout,
+
     // IOCTL dump
     input       [ 4:0] ioctl_addr,
     output      [ 7:0] ioctl_din
 );
 
 wire [71:0] tblock;
-wire [16:0] tmap_addr;
 reg  [16:0] tmapaddr_l;
 reg  [20:0] rom_addr_l;
 wire [18:0] full_addr;
 wire [ 8:0] la;
 wire [ 2:1] lh;
 reg  [13:0] code;
-wire [12:0] x, y, encoded;
+wire [12:0] x, y;
 wire        xh,yh,ob;
 wire        hflip, vflip, cen;
 wire [ 7:0] buf_din;
 reg  [ 3:0] pal;
 wire [ 3:0] vf, hf, dmux;
 wire [ 1:0] tile;
-reg         rst2, cen2;
+reg         cen2;
 // encoder
-wire [17:1] t2x2_addr;
-wire [15:0] t2x2_din;
-wire        t2x2_we, dec_we;
+wire        dec_we, t2x2_we_pre;
 wire [12:0] dec_addr;
 wire [71:0] dec_dout, dec_din;
+reg  [12:0] encoded;
 reg  [ 4:0] tmap_sh;
 
 assign line_addr = {la[7:0],lh};
@@ -91,16 +97,23 @@ assign hf        = {4{hflip}} ^ {x[3:0]};
 assign rom_addr  = {code,vf,hf[3:1]}; // 13+4+4=21
 assign dmux      = hf[0] ? rom_data[3:0] : rom_data[7:4];
 assign buf_din   = ob    ? 8'b0          : {pal,dmux};
+assign t2x2_we   = {2{t2x2_we_pre}};
 
 initial cen2 = 0;
 
 always @(posedge clk) begin
-    rst2 <= rst | ~enable;
     cen2 <= ~cen2;
 
     tmapaddr_l <= tmap_addr;
     rom_cs     <= tmapaddr_l == tmap_addr;
 end
+
+`ifdef POCKET
+always @(posedge clk)
+    if(tmap_ok) encoded <= tmap_dout[12:0];
+`else
+always @(*)     encoded  = tmap_dout[12:0];
+`endif
 
 always @(*) begin
     case(tile)
@@ -110,9 +123,9 @@ always @(*) begin
         3: {pal, code} = tblock[54+:18];
     endcase
 end
-/* verilator tracing_off */
+/* verilator tracing_on */
 jt053936 u_xy(
-    .rst        ( rst2      ),
+    .rst        ( rst       ),
     .clk        ( clk       ),
     .cen        ( cen       ),
 
@@ -157,29 +170,14 @@ jtglfgreat_encoder u_encoder(
     // Compressed tilemap in VRAM
     .t2x2_addr  ( t2x2_addr ),
     .t2x2_din   ( t2x2_din  ),
-    .t2x2_we    ( t2x2_we   ),
+    .t2x2_we    (t2x2_we_pre),
     // Decoder
     .dec_addr   ( dec_addr  ),
     .dec_dout   ( dec_dout  ),
     .dec_din    ( dec_din   ),
     .dec_we     ( dec_we    )
 );
-/* verilator tracing_off */
-jtframe_dual_ram #(.AW(17),.DW(13),.SIMHEXFILE("tilemap_2x2.hex")) u_2x2tilemap (
-    // Port 0 - programming during power up
-    .clk0       ( clk       ),
-    .addr0      ( t2x2_addr ),
-    .data0      ( t2x2_din[12:0]  ),
-    .we0        ( t2x2_we   ),
-    .q0         (           ),
-    // Port 1 - regular access during gameplay
-    .clk1       ( clk       ),
-    .addr1      ( tmap_addr ),
-    .data1      ( 13'b0     ),
-    .we1        ( 1'b0      ),
-    .q1         ( encoded   )
-);
-
+/* verilator tracing_on */
 jtframe_dual_ram #(.AW(13),.DW(72),.SIMHEXFILE("decoder.hex")) u_decoder (
     // Port 0 - programming during power up
     .clk0       ( clk       ),
@@ -195,7 +193,7 @@ jtframe_dual_ram #(.AW(13),.DW(72),.SIMHEXFILE("decoder.hex")) u_decoder (
     .q1         ( tblock    )
 );
 
-jtframe_linebuf_gate #(.RD_DLY(15), .RST_CT(9'h041)) u_linebuf(
+jtframe_linebuf_gate #(.RD_DLY(21), .RST_CT(9'h044)) u_linebuf(
     .rst      ( rst       ),
     .clk      ( clk       ),
     .pxl_cen  ( pxl_cen   ),
@@ -214,5 +212,37 @@ jtframe_linebuf_gate #(.RD_DLY(15), .RST_CT(9'h041)) u_linebuf(
     .pxl_data ( buf_din   ),
     .pxl_dump ( pxl       )
 );
+
+`ifdef SIMULATION
+reg [8:0] ln_cnt, pxl_cnt, ln_tot, pxl_tot;
+reg       hs_l, start;
+wire      cnt_check;
+
+always @(posedge clk) hs_l <= hs;
+assign cnt_check = ln_tot==pxl_tot;
+
+always @(posedge clk) begin
+    if(rst) begin
+        {ln_cnt,pxl_cnt, ln_tot, pxl_tot} <= 0;
+        start  <= 0;
+    end else if( ~hs & hs_l ) begin
+        start <= 1;
+        if(start) begin
+            ln_cnt    <= 0;      pxl_cnt   <= 0;
+            ln_tot    <= ln_cnt; pxl_tot   <= pxl_cnt;
+            if( enc_done && !cnt_check) begin
+                $display("ERROR: not enough cen pulses provided to psac");
+                $display("Received=%d. Needed=%d", ln_tot, pxl_tot);
+                $finish;
+            end
+        end
+    end else if(start) begin
+        if(cen)
+            ln_cnt  <= ln_cnt +1'd1;
+        if(pxl_cen)
+            pxl_cnt <= pxl_cnt+1'd1;
+    end
+end
+`endif
 
 endmodule

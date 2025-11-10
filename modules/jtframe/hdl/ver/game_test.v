@@ -219,6 +219,11 @@ wire        prog_rdy;
 wire [15:0] data_read;
 wire        SDRAM_DQML;     // SDRAM Low-byte Data Mask
 wire        SDRAM_DQMH;     // SDRAM High-byte Data Mask
+// SRAM
+wire [16:0]  sram_addr;
+wire [15:0]  sram_din, sram_dout;
+wire [ 1:0]  sram_dsn;
+wire         sram_wen, sram_ok;
 
 assign SDRAM_DQM= { SDRAM_DQMH, SDRAM_DQML };
 
@@ -262,6 +267,29 @@ endgenerate
 // clock is shifted or not.
 `ifdef VERILATOR_KEEP_SDRAM /* verilator tracing_on */ `else /* verilator tracing_off */ `endif
 wire prog_en = ioctl_rom | dwnld_busy;
+
+`ifdef JTFRAME_SRAM
+    // SRAM
+    assign sram_ok=1; // to do: change it to proper delay
+    jtframe_ram16 #(.AW(18))u_sram(
+        .clk    ( clk48     ),
+        .data   ( sram_din  ),
+        .addr   ( sram_addr ),
+        .we     ( ~sram_dsn ),
+        .q      ( sram_dout )
+    );
+`endif
+
+wire [1:0] rfsh;
+
+// Automatic JTFRAME macros set a 64us refresh period
+jtframe_frac_cen #(.WC(`JTFRAME_RFSH_WC)) u_rfsh(
+    .clk    ( clk_rom           ),
+    .n      ( `JTFRAME_RFSH_N   ),
+    .m      ( `JTFRAME_RFSH_M   ),
+    .cen    ( rfsh              ),
+    .cenb   (                   )
+);
 
 jtframe_sdram64 #(
     .AW           ( SDRAMW        ),
@@ -344,7 +372,7 @@ jtframe_sdram64 #(
 
     // Common signals
     .dout       ( data_read     ),
-    .rfsh       ( !prog_en & ~LHBL ) // Do not refresh during programming
+    .rfsh       ( !prog_en & rfsh[0] ) // Do not refresh during programming
                                      // the verilator code sends the data too fast
 );
 /* verilator tracing_off */
@@ -370,7 +398,7 @@ jtframe_sdram_stats_sim #(.AW(SDRAMW)) u_stats(
         wire  [ 8:0] ln_addr;
         wire  [15:0] ln_data;
         wire         ln_done;
-        wire         ln_hs;
+        wire         ln_hs, ln_vs, ln_lvbl;
         wire  [15:0] ln_pxl;
         wire  [ 7:0] ln_v;
         wire         ln_we;
@@ -392,6 +420,7 @@ jtframe_sdram_stats_sim #(.AW(SDRAMW)) u_stats(
             .clk        ( clk_rom       ),
             .pxl_cen    ( pxl_cen       ),
 
+            .vs         ( HS            ),
             .vs         ( VS            ),
             .lvbl       ( LVBL          ),
             .lhbl       ( LHBL          ),
@@ -405,6 +434,8 @@ jtframe_sdram_stats_sim #(.AW(SDRAMW)) u_stats(
             .ln_hs      ( ln_hs         ),
             .ln_pxl     ( ln_pxl        ),
             .ln_v       ( ln_v          ),
+            .ln_vs      ( ln_vs         ),
+            .ln_lvbl    ( ln_lvbl       ),
             .ln_we      ( ln_we         ),
 
             // PSRAM chip 0
@@ -457,6 +488,7 @@ jtframe_sdram_stats_sim #(.AW(SDRAMW)) u_stats(
             .clk        ( clk_rom       ),
             .pxl_cen    ( pxl_cen       ),
 
+            .hs         ( HS            ),
             .vs         ( VS            ),
             .lvbl       ( LVBL          ),
             .lhbl       ( LHBL          ),
@@ -470,6 +502,8 @@ jtframe_sdram_stats_sim #(.AW(SDRAMW)) u_stats(
             .ln_hs      ( ln_hs         ),
             .ln_pxl     ( ln_pxl        ),
             .ln_v       ( ln_v          ),
+            .ln_vs      ( ln_vs         ),
+            .ln_lvbl    ( ln_lvbl       ),
             .ln_we      ( ln_we         ),
 
             .ddram_clk  ( DDRAM_CLK     ),
@@ -582,7 +616,15 @@ u_game(
     .prog_rd    ( prog_rd       ),
     .prog_we    ( prog_we       ),
     .prog_mask  ( prog_mask     ),
-
+`ifdef JTFRAME_SRAM
+    // SRAM
+    .sram_addr   ( sram_addr      ),
+    .sram_din    ( sram_din       ),
+    .sram_dout   ( sram_dout      ),
+    .sram_wen    ( sram_wen       ),
+    .sram_dsn    ( sram_dsn       ),
+    .sram_ok     ( sram_ok        ),
+`endif
     // DIP switches
     .status      ( status[31:0]   ),
     .dip_pause   ( dip_pause      ),
@@ -607,6 +649,8 @@ u_game(
     .ln_hs       ( ln_hs          ),
     .ln_pxl      ( ln_pxl         ),
     .ln_v        ( ln_v           ),
+    .ln_vs       ( ln_vs          ),
+    .ln_lvbl     ( ln_lvbl        ),
     .ln_we       ( ln_we          ),
 `endif
 

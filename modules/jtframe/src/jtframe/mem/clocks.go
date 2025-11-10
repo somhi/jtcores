@@ -47,7 +47,7 @@ func find_div( fin, fout float64) (int, int) {
 func make_clocks( cfg *MemConfig ) {
 	max := func( a,b int ) int { if a>b { return a } else { return b } }
 
-	mode96 := macros.IsSet("JTFRAME_SDRAM96") || macros.IsSet("JTFRAME_CLK96")
+	mode96 := macros.IsSet("JTFRAME_SDRAM96")
 	fmhz := macros.GetInt("JTFRAME_MCLK")
 
 	for key, list := range cfg.Clocks {
@@ -67,7 +67,7 @@ func make_clocks( cfg *MemConfig ) {
 				case "clk48": ratio = 1.0
 				case "clk96": ratio = 2.0
 				}
-				if v.ClkName == "clk48" { v.ClkName = "clk" }
+				if v.ClkName == "clk48" && !mode96 { v.ClkName = "clk" }
 			}
 			v.KHz = int(float64(fmhz)*ratio/1000)
 			v.OutStr = ""

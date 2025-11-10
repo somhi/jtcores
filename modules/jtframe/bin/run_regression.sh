@@ -1,7 +1,7 @@
 #!/bin/bash
 
-REGRESSION_FILE="reg.yaml"
 # change default frames in $JTFRAME/bin/reg.yaml
+TODELETE=()
 
 main() {
     if [[ -z $JTROOT ]]; then
@@ -11,6 +11,7 @@ main() {
     fi
 
     shopt -s nullglob
+    trap clean_up INT KILL EXIT
 
     parse_args "$@"
 
@@ -20,7 +21,7 @@ main() {
 
     if ! cd_ver_folder; then exit 2; fi
 
-    exec 3> $setname-sim.log
+    exec 3> $fullname-sim.log
 
     print_step "Simulating $setname"
     local simulate_ec=0
@@ -116,6 +117,10 @@ main() {
     return $ec
 }
 
+clean_up() {
+    rm -rf "${main[@]}"
+}
+
 parse_args() {
     REMOTE_DIR=domains/jotego.es
     LOCAL_DIR=""
@@ -124,28 +129,24 @@ parse_args() {
     local_rom=false
     push=false
 
-    if [[ $# -lt 2 ]]; then
-        echo "Usage: $0 <core> <setname> [--frames <number_of_frames>] [--port <ssh_port>] [--user <sftp_user>] [--host <server_ip>] [--path REMOTE_DIR] [--check] [--local-check LOCAL_DIR] [--local-rom] [--push] [-h|--help]"
-        exit 1
-    fi
-    if [[ $1 == --help ]]; then
-        echo "Usage: $0 <core> <setname> [--frames <number_of_frames>] [--port <ssh_port>] [--user <sftp_user>] [--host <server_ip>] [--path REMOTE_DIR] [--check] [--local-check LOCAL_DIR] [--local-rom] [--push] [-h|--help]"
-        echo ""
+    if [[ $1 == --help || $1 == -h ]]; then
         print_help
         exit 0
     fi
+    if [[ $# -lt 2 ]]; then
+        echo "Usage: $0 <core> <setname> [other args]"
+        exit 1
+    fi
     core=$1; shift
-    setname=$1; shift
+    parse_setname $1; shift
 
-    while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
+    while [[ $# -gt 0 ]]; do case $1 in
         --path) shift; REMOTE_DIR="$1" ;;
         --check) check=true ;;
         --local-check) shift; local_check=true; LOCAL_DIR="$1" ;;
         --local-rom) local_rom=true ;;
         --push) push=true ;;
-        --help)
-            echo "Usage: $0 <core> <setname> [--frames <number_of_frames>] [--port <ssh_port>] [--user <sftp_user>] [--host <server_ip>] [--path REMOTE_DIR] [--check] [--local-check LOCAL_DIR] [--local-rom] [--push] [-h|--help]"
-            echo ""
+        -h|--help)
             print_help
             exit 0
             ;;
@@ -162,7 +163,6 @@ parse_args() {
         --user) shift; SFTP_USER=$1 ;;
         *)
             echo "[ERROR] Unknown option: $1"
-            echo "Usage: $0 <core> <setname> [--frames <number_of_frames>] [--port <ssh_port>] [--user <sftp_user>] [--host <server_ip>] [--path REMOTE_DIR] [--check] [--local-check LOCAL_DIR] [--local-rom] [--push] [-h|--help]"
             exit 1
             ;;
     esac; shift; done
@@ -177,12 +177,13 @@ parse_args() {
 }
 
 print_help() {
-    cat <<'EOF'
+    cat << EOF
 Run a simulation for the specified setname.
 If the corresponding folder doesn't exist it will be created.
 
+Usage: run_regression.sh <core> <setname> [--port <ssh_port>] [--user <sftp_user>] [--host <server_ip>] [--path REMOTE_DIR] [--check] [--local-check LOCAL_DIR] [--local-rom] [--push] [-h|--help]
+
 Options:
-  --frames N                Run simulations with N frames (default: 100).
   --path REMOTE_DIR         Specify the REMOTE_DIR path (default: domains/jotego.es).
                             Be sure to have the right permissions on the directory you specify.
   --check                   Validate extracted simulation against reference results stored
@@ -206,6 +207,12 @@ Options:
 
 By default, simulations are extracted without validation or upload.
 EOF
+}
+
+parse_setname() {
+    fullname="$1"
+    local rest
+    IFS="-" read setname rest <<< "$fullname"
 }
 
 print_title() {
@@ -236,7 +243,7 @@ cd_ver_folder() {
         return 1
     fi
 
-    local ver_folder="$JTROOT/cores/$core/ver/$setname"
+    local ver_folder="$JTROOT/cores/$core/ver/$fullname"
     mkdir --parents $ver_folder
     cd $ver_folder
 }
@@ -247,19 +254,31 @@ simulate() {
         if ! get_zips roms_dir; then return 1; fi
         jtframe mra --path $roms_dir --setname $setname
         rm -rf $roms_dir
+    else
+        jtframe mra --setname $setname
     fi
 
     declare -a sim_opts
     get_opts sim_opts
 
+    create_nvram_files
     jtsim -batch -load -skipROM -setname $setname "${sim_opts[@]}" >&3 2>&3
-    if [[ $? != 0 ]]; then return 2; fi
+    if [[ $? != 0 ]]; then
+        if $local_rom; then
+            cat $fullname-sim.log
+        fi
+        return 2;
+    fi
 
     if [[ ! -f "test.mp4" ]]; then
         echo "[WARNING] Generated video not found"
     else
         mv "test.mp4" "$setname.mp4"
     fi
+}
+
+create_nvram_files() {
+    jtutil sdram $setname
 }
 
 get_zips() {
@@ -269,7 +288,7 @@ get_zips() {
     if ! get_zip_names zip_names; then return 1; fi
     
     roms_dir_ref=$(mktemp -d)
-    trap "rm -rf $roms_dir_ref" EXIT
+    TODELETE+=($roms_dir_ref)
 
     for zip in "${zip_names[@]}"; do
         sftp -P $SSH_PORT $SFTP_USER@$SFTP_HOST:$REMOTE_DIR >/dev/null 2>&1 <<EOF
@@ -306,8 +325,8 @@ get_zip_names() {
 get_opts() {
     declare -n opts_ref=$1
 
-    local global_cfg_file="$JTROOT/modules/jtframe/bin/$REGRESSION_FILE"
-    local local_cfg_file="$JTROOT/cores/$core/cfg/$REGRESSION_FILE"
+    local global_cfg_file="$JTROOT/modules/jtframe/bin/reg.yaml"
+    local local_cfg_file="$JTROOT/cores/$core/cfg/reg.yaml"
 
     local frames_found=false
 
@@ -329,10 +348,10 @@ get_opts() {
     # --- Parse core config ---
     if [[ ! -f $local_cfg_file ]]; then
         echo "[WARNING] Cannot find local configuration file for $core regressions. Searched in $local_cfg_file"
-    elif [[ $(yq ".$setname" $local_cfg_file) == "null" ]]; then
-        echo "[WARNING] $setname is not meant to execute a regression. You shouldn't be requesting it"
+    elif [[ $(yq ".$fullname" $local_cfg_file) == "null" ]]; then
+        echo "[WARNING] $fullname is not meant to execute a regression. You shouldn't be requesting it"
     else
-        readarray raw_opts < <(yq -o=j -I=0 ".$setname | to_entries[]" $local_cfg_file)
+        readarray raw_opts < <(yq -o=j -I=0 ".$fullname | to_entries[]" $local_cfg_file)
         for item in "${raw_opts[@]}"; do
             key=$(echo $item | yq '.key' -)
             value=$(echo $item | yq '.value' -)
@@ -353,6 +372,7 @@ get_opts() {
 
 check_video() {
     print_step "Checking frames"
+    delete_duplicated_frames
 
     if $check; then
         local frames_dir
@@ -370,7 +390,7 @@ check_video() {
 get_remote_frames() {
     declare -n dir=$1
     dir=$(mktemp -d)
-    trap "rm -rf $dir" EXIT
+    TODELETE+=($dir)
 
     echo "[INFO] Downloading remote frames for $setname"
     sftp -P $SSH_PORT $SFTP_USER@$SFTP_HOST:$REMOTE_DIR >/dev/null 2>&1 <<EOF
@@ -393,7 +413,7 @@ check_frames() {
     local n_ref_frames="${#ref_frames[@]}"
 
     if [[ $n_frames -gt $n_ref_frames ]]; then
-        echo " [WARNING] There are $n_ref_frames frames available for comparison, when it is needed a minimum of $n_frames"
+        echo "[WARNING] The valid folder contains $n_ref_frames frames but the new simulation has $n_frames"
         return 1
     fi
 
@@ -402,15 +422,18 @@ check_frames() {
         local ref_frame="${ref_frames[$i]}"
 
         local failed=false
-        if perceptualdiff "$ref_frame" "$frame"; then
-            echo "[INFO] $(basename $frame): match"
-        else
+        if ! perceptualdiff "$ref_frame" "$frame"; then
             echo "[WARNING] $(basename $frame): difference detected"
             local failed=true
+            break
         fi
     done
 
-    if $failed; then return 2; fi
+    if $failed; then
+        return 2
+    else
+        echo "[INFO] All frames matched the reference"
+    fi
 }
 
 check_audio() {
@@ -455,8 +478,8 @@ check_audio() {
         return 0
     else
         echo "[ERROR] Audio doesn't match"
-        sox $ref_audio -n trim 0 $len_test spectrogram -o reference-spectro.png
-        sox $test_audio -n spectrogram -o test-spectro.png
+        sox $ref_audio -n trim 0 $len_test spectrogram -o reference-spectrum.png
+        sox $test_audio -n spectrogram -o test-spectrum.png
         return 2
     fi
 }
@@ -471,7 +494,7 @@ EOF
 
     unzip audio.zip
     rm -f audio.zip
-    trap "rm -f audio.wav" EXIT
+    TODELETE+=(`realpath audio.wav`)
 }
 
 upload_results() {
@@ -481,34 +504,57 @@ upload_results() {
     files=(frames.zip audio.zip $setname.mp4)
 
     case $ec in
-        1)
+        0) files=();;
+        1|2)
             folder="fail"
-            files=("$setname-sim.log")
+            files=("$fullname-sim.log")
         ;;
         3|5|6) folder="not_checked" ;;
         4|7|10)
             folder="fail"
-            files+=(test-spectro.png reference-spectro.png)
+            files+=(test-spectrum.png reference-spectrum.png)
         ;;
         8|9) folder="fail" ;;
         *) return ;;
     esac
 
-    zip -q frames.zip frames/*
-    mv --force --no-copy test.wav audio.wav
-    zip -q audio.zip audio.wav
+    if [ $ec != 0 ]; then prepare_zip_files; fi
 
     echo "[INFO] Starting upload"
     sftp -P $SSH_PORT $SFTP_USER@$SFTP_HOST:$REMOTE_DIR >/dev/null 2>&1 <<EOF
 mkdir regression
 mkdir regression/$core
-mkdir regression/$core/$setname
-mkdir regression/$core/$setname/$folder
-cd regression/$core/$setname/$folder
+mkdir regression/$core/$fullname
+mkdir regression/$core/$fullname/$folder
+cd regression/$core/$fullname/$folder
+rm -rf not_checked fail
 $(for f in "${files[@]}"; do echo "put $f"; done)
 bye
 EOF
     echo "[INFO] Upload finished"
+}
+
+prepare_zip_files() {
+    zip -q frames.zip frames/*
+    mv --force --no-copy test.wav audio.wav
+    zip -q audio.zip audio.wav
+}
+
+delete_duplicated_frames() {
+    local first=true
+    local last
+    for i in frames/frame*jpg; do
+        if $first; then
+            first=false
+            last=$i
+            continue
+        fi
+        if diff -q $last $i > /dev/null; then
+            rm $i
+            continue
+        fi
+        last=$i
+    done
 }
 
 main "$@"

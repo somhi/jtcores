@@ -57,7 +57,7 @@ module jt053936(
     wire [ 5:0] xclip, yclip;
     wire        ln_en, ln_rd, ln_ok;
     wire [ 5:0] ob_cfg;
-    wire        nulwin, tick_hs, tick_vs, hs_dly;
+    wire        tick_hs, tick_vs, hs_dly;
     reg  [ 1:0] xmul, ymul;
     integer k;
 
@@ -84,15 +84,19 @@ module jt053936(
 
     assign dma_n  = ln_rd || !ln_en;
 
-    always @(posedge clk) if(cen) begin
+    always @(posedge clk) if(rst) begin
+        xmul <= 0;
+        ymul <= 0;
+    end else if(cen) begin
         xmul <= ln_en ? ~hmul : {2{mmr[6][6]}};
         ymul <= ln_en ? ~vmul : {2{mmr[6][6]}};
     end
 
-    jt053936_ticks u_ticks(clk,cen,hs,vs,tick_hs,tick_vs);
-    jt053936_video_counters u_vid(clk,cen,tick_hs,tick_vs,vcnt0,hcnt0,v,h);
+    jt053936_ticks u_ticks(rst,clk,cen,hs,vs,tick_hs,tick_vs);
+    jt053936_video_counters u_vid(rst,clk,cen,tick_hs,tick_vs,vcnt0,hcnt0,v,h);
 
     jt053936_line_ram u_line_ram(
+        .rst        ( rst       ),
         .clk        ( clk       ),
         .cen        ( cen       ),
         .dtackn     ( dtackn    ),
@@ -105,17 +109,16 @@ module jt053936(
         .la         ( la        ),
         .lh         ( lh        ),
         .rd         ( ln_rd     ),
-        .ok         ( ln_ok     ),
-        .hs_dly     ( hs_dly    )
+        .ok         ( ln_ok     )
     );
 
     jt053936_counter u_hcnt(
+        .rst        ( rst       ),
         .clk        ( clk       ),
         .cen        ( cen       ),
         .ln_en      ( ln_en     ),
         .vs         ( tick_vs   ),
         .hs         ( tick_hs   ),
-        .hs_dly     ( hs_dly    ),
         .hstep      ( xhstep    ),
         .vstep      ( xvstep    ),
         .cnt0       ( xcnt0     ),
@@ -124,12 +127,12 @@ module jt053936(
     );
 
     jt053936_counter u_vcnt(
+        .rst        ( rst       ),
         .clk        ( clk       ),
         .cen        ( cen       ),
         .ln_en      ( ln_en     ),
         .vs         ( tick_vs   ),
         .hs         ( tick_hs   ),
-        .hs_dly     ( hs_dly    ),
         .hstep      ( yhstep    ),
         .vstep      ( yvstep    ),
         .cnt0       ( ycnt0     ),
@@ -138,6 +141,7 @@ module jt053936(
     );
 
     jt053936_window u_window(
+        .rst        ( rst       ),
         .clk        ( clk       ),
         .cen        ( cen       ),
         .cfg        ( ob_cfg    ),
@@ -159,15 +163,21 @@ module jt053936(
         .ob         ( ob        )
     );
 
-    task mmr_write();
+    task mmr_write(); begin
         if( !dsn[0] ) mmr[addr][ 7:0] <= din[ 7:0];
         if( !dsn[1] ) mmr[addr][15:8] <= din[15:8];
+    end
     endtask
 
     always @(posedge clk) if(cen) begin
         {x,xh} <= xsum[23:10];
         {y,yh} <= ysum[23:10];
     end
+
+`ifdef SIMULATION
+    integer i;
+    reg [7:0] mmr_init[0:31];
+`endif
 
     always @(posedge clk) begin
         if( rst ) begin
@@ -196,8 +206,7 @@ module jt053936(
         ioctl_din <= ioctl_addr[0] ? io_mux[15:8] : io_mux[7:0];
     end
 `ifdef SIMULATION
-    integer f, i, fcnt, err;
-    reg [7:0] mmr_init[0:31];
+    integer f, fcnt;
     initial begin
         f=$fopen("psac.bin","rb");
         if( f!=0 ) begin
@@ -207,7 +216,7 @@ module jt053936(
                 $display("WARNING: Missing %d bytes for %m.mmr",32-fcnt);
             end
         end else begin
-            for(i=0;i<32;i++) mmr_init[i] = 0;
+            for(i=0;i<32;i=i+1) mmr_init[i] = 0;
         end
         $fclose(f);
     end
@@ -217,7 +226,7 @@ endmodule
 /////////////////////////////////////////////////////
 module jt053936_ticks(
     // keep port order
-    input      clk,cen,hs,vs,
+    input      rst,clk,cen,hs,vs,
     output reg tick_hs,tick_vs
 );
     reg [1:0] hs_l, vs_l;
@@ -225,7 +234,12 @@ module jt053936_ticks(
     wire vs_edge =~vs_l[0] & vs_l[1];
     wire hs_edge =~hs_l[0] & hs_l[1];
 
-    always @(posedge clk) if(cen) begin
+    always @(posedge clk) if(rst) begin
+        tick_hs <= 0;
+        tick_vs <= 0;
+        hs_l    <= 0;
+        vs_l    <= 0;
+    end else if(cen) begin
         hs_l <= {hs_l[0],hs};
         vs_l <= {vs_l[0],vs};
 
@@ -236,13 +250,16 @@ endmodule
 
 /////////////////////////////////////////////////////
 module jt053936_video_counters(
-    input            clk, cen, tick_hs, tick_vs,
+    input            rst, clk, cen, tick_hs, tick_vs,
     input      [8:0] v0,
     input      [9:0] h0,
     output reg [8:0] v,
     output reg [9:0] h
 );
-    always @(posedge clk) if(cen) begin
+    always @(posedge clk) if(rst) begin
+        h <= 0;
+        v <= 0;
+    end else if(cen) begin
         h  <= tick_hs ?  h0 : h+10'd1;
         v  <= tick_vs ?  v0 : tick_hs ?  v+9'd1 :  v;
     end
@@ -250,31 +267,32 @@ endmodule
 
 /////////////////////////////////////////////////////
 module jt053936_line_ram(
-    input            clk, cen, tick_hs, tick_vs, dtackn, en,
+    input            rst, clk, cen, tick_hs, tick_vs, dtackn, en,
     input      [8:0] ln0,
     output reg [8:0] la,
     output     [2:1] lh,
-    output           rd, ok, hs_dly
+    output           rd, ok
 );
+
     reg [3:0] cnt;
-    reg [8:0] dly;
 
     assign lh     = cnt[2:1];
     assign rd     =~cnt[3] & en;
     assign ok     = rd & ~dtackn;
-    assign hs_dly = dly[8];
 
-    always @(posedge clk) if(cen) begin
+    always @(posedge clk) if(rst) begin
+        la  <= 0;
+        cnt <= 0;
+    end else if(cen) begin
         la  <= tick_vs ? ln0  : tick_hs ? la +9'd1 : la;
         cnt <= tick_hs ? 4'd0 : ok      ? cnt+4'd1 : cnt;
-        dly <= tick_hs ? 9'd1 : dly<<1;
     end
 endmodule
 
 
 /////////////////////////////////////////////////////
 module jt053936_window #(parameter W=9)(
-    input         clk, cen, tick_hs, tick_vs,
+    input         rst, clk, cen, tick_hs, tick_vs,
     input [9:0]   h, xmin,  xmax,
     input [8:0]   v, ymin,  ymax,
     input [5:0]   xclip, yclip,
@@ -296,12 +314,14 @@ module jt053936_window #(parameter W=9)(
     assign xyout    = xout & yout;
     assign ob_mix_n = ~|{obx_n, oby_n, ob_win};
 
-    jt053936_outside #(10) u_hwin(clk,cen,tick_hs,nulwin,h,xmax,xmin,xout);
-    jt053936_outside #( 9) u_vwin(clk,cen,tick_vs,nulwin,v,ymin,ymax,yout);
+    jt053936_outside #(10) u_hwin(rst,clk,cen,tick_hs,nulwin,h,xmax,xmin,xout);
+    jt053936_outside #( 9) u_vwin(rst,clk,cen,tick_vs,nulwin,v,ymin,ymax,yout);
     jt053936_clip         u_xclip(xclip,xsum,obx_n);
     jt053936_clip         u_yclip(yclip,ysum,oby_n);
 
-    always @(posedge clk) if(cen) begin
+    always @(posedge clk) if(rst) begin
+        ob_win <= 0;
+    end else if(cen) begin
         if( !ob_en ) begin
             ob_win <= 1;
         end else begin
@@ -318,7 +338,10 @@ module jt053936_window #(parameter W=9)(
         endcase
     end
 
-    always @(posedge clk) if(cen) begin
+    always @(posedge clk) if(rst) begin
+        sh <= 0;
+        ob <= 0;
+    end else if(cen) begin
         sh <=  {sh[1:0],ob_mix_n};
         ob <= ~ob_dly;
     end
@@ -326,7 +349,7 @@ endmodule
 
 /////////////////////////////////////////////////////
 module jt053936_outside #(parameter W=9)(
-    input         clk, cen, s_edge, nulwin,
+    input         rst, clk, cen, s_edge, nulwin,
     input [W-1:0] cnt, min,  max,
     output reg    outside
 );
@@ -344,7 +367,9 @@ module jt053936_outside #(parameter W=9)(
         falling = ~a & a_l;
     endfunction // falling
 
-    always @(posedge clk) if(cen) begin
+    always @(posedge clk) if(rst) begin
+        outside <= 0;
+    end else if(cen) begin
         hitn_l <= hit_n;
         if( up )
         case(hit_n)
@@ -367,25 +392,28 @@ endmodule
 
 /////////////////////////////////////////////////////
 module jt053936_counter(
-    input             clk,cen,hs,hs_dly,vs,ln_en,
+    input             rst, clk,cen,hs,vs,ln_en,
     input      [15:0] hstep, vstep,cnt0,
     input      [ 1:0] mul,
     output reg [23:0] cnt
 );
     reg [23:0] eff_hstep, eff_vstep, vcnt;
-    reg        hs_mx;
-    wire up  = ln_en ? hs_dly : vs;
+    wire up  = ln_en ? hs : vs;
+    reg  hs_l;
 
-    always @(posedge clk) if(cen) begin
+    always @(posedge clk) if(rst) begin
+        cnt   <= 0;
+        hs_l  <= 0;
+    end else if(cen) begin
         if(up) begin
             eff_hstep <= mul[0] ? {hstep,8'd0} : {{8{hstep[15]}},hstep};
             eff_vstep <= mul[1] ? {vstep,8'd0} : {{8{vstep[15]}},vstep};
         end
-        hs_mx <= ln_en ? hs_dly : hs;
         cnt   <= eff_hstep + cnt;
-        if(hs_mx) begin
-            cnt  <= vcnt;
-            vcnt <= eff_vstep + (ln_en ? {cnt0,8'd0} : vcnt);
+        hs_l  <= hs;
+        if(hs_l) begin
+            vcnt <= eff_vstep + vcnt;
+            cnt  <= ln_en ? eff_vstep + {cnt0,8'd0} : vcnt;
         end
         if(vs) begin
              cnt <= {cnt0,8'd0};

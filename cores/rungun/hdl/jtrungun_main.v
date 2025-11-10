@@ -17,11 +17,12 @@
     Date: 4-7-2025 */
 
 module jtrungun_main(
-    input                rst, clk, pxl_cen,
+    input                rst, clk, pxl_cen, clk96,
     input                lvbl,
     input                disp,
 
-    output reg    [21:1] main_addr,
+    output        [21:1] rom_addr,
+    output        [12:1] cpu_addr,
     output        [ 1:0] ram_dsn,
     output               ram_we,
     output        [15:0] cpu_dout,
@@ -92,20 +93,22 @@ wire        cpu_cen, cpu_cenb, bus_dtackn, dtackn, VPAn,
             fmode, fsel, l5mas, l3mas, l2mas, int5, l_r,
             UDSn, LDSn, RnW, ASn, BUSn, bus_busy, bus_cs,
             eep_rdy, eep_do, eep_di, eep_clk, eep_cs;
-reg         boot_cs, xrom_cs, gfx_cs, sys2_cs, sys1_cs, vmem_cs,
+reg         gfx_cs, sys2_cs, sys1_cs, vmem_cs,
             io1_cs, io2_cs, io_cs, misc_cs, cpal_cs, cab_cs, HALTn,
             pslrm_cs, psvrm_cs,
-            objch_cs, pair_cs, sdon_cs, psch_cs, rom_good, ram_good;
+            objch_cs, pair_cs, sdon_cs, psch_cs;
 
 `ifdef SIMULATION
 wire [23:0] A_full = {A,1'b0};
 `endif
 
+assign cpu_addr = A[12:1];
+assign rom_addr ={A[20],A[21],A[19:1]};
 assign VPAn     = ~&{A[23],~ASn};
 assign ram_dsn  = {UDSn, LDSn};
 assign ram_we   = ~RnW;
 assign bus_cs   = rom_cs | ram_cs;
-assign bus_busy = (rom_cs & ~(rom_ok & rom_good)) | (ram_cs & ~(ram_ok & ram_good));
+assign bus_busy = (rom_cs & ~rom_ok) | (ram_cs & ~ram_ok);
 assign BUSn     = ASn | (LDSn & UDSn);
 assign cpu_rnw  = RnW;
 // sys1
@@ -142,17 +145,16 @@ assign sdon      = sdon_cs;
 
 assign lrsw      = fmode ? disp : fsel;
 
+reg [3:0] cs_count;
+
 always @* begin
     // 056541 PAL
-    boot_cs =   !ASn  &&  A[23:20]==0 && RnW && !BUSn;
-    xrom_cs =   !ASn  && (A[23:20]==2 || A[23:20]==1) && !BUSn;
-    rom_cs  = boot_cs || xrom_cs;
-
-    ram_cs  =   !ASn  &&  A[23:19]==5'b0011_1 && !BUSn;
-    gfx_cs  =   !ASn  &&  A[23:21]==3'b011;     // $3?_???? ~$7?_????
-    // dmac_cs =   !ASn  &&  A[23:19]==5'b0011_1;  // $38_???? same as RAM in PAL equations
+    rom_cs  =   !BUSn &&  A[23:20] <4'b0011;
+    ram_cs  =   !BUSn &&  A[23:19]==5'b0011_1;
     cpal_cs =   !ASn  &&  A[23:19]==5'b0011_0;
-    misc_cs =   !ASn  &&  A[23:21]==3'b010 && !rom_cs; // $4?_...
+    gfx_cs  =   !ASn  &&  A[23:21]==3'b011;     // $6?_???? ~$7?_????
+    misc_cs =   !ASn  &&  A[23:21]==3'b010;     // $4?_...
+//  dmac_cs =   !ASn  &&  A[23:19]==5'b0011_1;  // $38_???? same as RAM in PAL equations
     // 74F138 at 11T
     vmem_cs = gfx_cs  &&  A[20:18]==5; // $74_????
     pslrm_cs= gfx_cs  &&  A[20:18]==4; // $70_... 2k PSAC line
@@ -166,7 +168,7 @@ always @* begin
     sdon_cs = misc_cs &&  A[20:18]==5;
     ccu_cs  = misc_cs &&  A[20:18]==3;
     io_cs   = misc_cs &&  A[20:18]==2;
-    psch_cs = misc_cs &&  A[20:19]==0;
+    psch_cs = misc_cs &&  A[20:19]==0; // covers A[20:18]==0/==1
 
     sys2_cs = io_cs   &&  A[ 3: 2]==3;
     sys1_cs = io_cs   &&  A[ 3: 2]==2;
@@ -174,16 +176,17 @@ always @* begin
     io1_cs  = io_cs   &&  A[ 3: 2]==0;
 
     cab_cs  = io1_cs  || io2_cs;
-end
 
-always @* begin
-    main_addr = A[21:1];
-    if(boot_cs) main_addr[21:20]=0;
-    if(rom_cs ) case(A[21:20])
-        1: main_addr[21:20] = 2'b10;
-        2: main_addr[21:20] = 2'b01;
-        default:;
-    endcase
+    cs_count =                                   {3'd0,rom_cs}  + {3'd0,ram_cs}
+                              + {3'd0,cpal_cs} +                  {3'd0,vmem_cs}
+             + {3'd0,pslrm_cs}+ {3'd0,psvrm_cs}+ {3'd0,psreg_cs}+ {3'd0,objrg_cs}
+             + {3'd0,objrm_cs}+ {3'd0,objch_cs}+ {3'd0,pair_cs} + {3'd0,sdon_cs}
+             + {3'd0,ccu_cs}                   + {3'd0,psch_cs} + {3'd0,sys2_cs}
+             + {3'd0,sys1_cs} + {3'd0,io2_cs}  + {3'd0,io1_cs};
+    if(cs_count>1) begin
+        $display("cs_count over 1!");
+        $finish;
+    end
 end
 
 always @* begin
@@ -193,12 +196,11 @@ always @* begin
 end
 
 always @(posedge clk) begin
-    rom_good  <= rom_cs & rom_ok;
-    ram_good  <= ram_cs & ram_ok;
     cab1_dout <= A[1] ? {cab_1p[3],joystick4,cab_1p[1],joystick2}:
-                        {cab_1p[2],joystick3,cab_1p[0],joystick1};
+                        // To do: remove combination of joystick1 & joystick3
+                        {cab_1p[2],joystick1 & joystick3,cab_1p[0],joystick1 & joystick3};
     // odma=0 halts the game
-    cab2_dout <= { lrsw, odma^debug_bus[0], A[1] ? {dipsw, dip_test, 1'b1, eep_rdy, eep_do }:
+    cab2_dout <= { lrsw, odma, A[1] ? {dipsw, dip_test, 1'b1, eep_rdy, eep_do }:
                                       {service,   coin}};
     cab_dout  <= io1_cs ? cab1_dout : {6'h0, cab2_dout};
     HALTn     <= dip_pause & ~rst;
@@ -219,7 +221,7 @@ end
 jtframe_edge u_lvbl(
     .rst    ( rst       ),
     .clk    ( clk       ),
-    .edgeof ( lvbl      ),
+    .edgeof (~lvbl      ),
     .clr    (~l5mas     ),
     .q      ( int5      )
 );
@@ -263,9 +265,18 @@ jt5911 #(.SIMFILE("nvram.bin")) u_eeprom(
     .dump_flag  (           )
 );
 
+wire pxl48_cen;
+
+jtframe_crossclk_cen u_crosscen(
+    .clk_in     ( clk96     ),     // fast clock
+    .cen_in     ( pxl_cen   ),
+    .clk_out    ( clk       ),    // slow clock
+    .cen_out    ( pxl48_cen )
+);
+
 jtrungun_dtack u_dtack(
     .clk        ( clk       ),
-    .pxl_cen    ( pxl_cen   ),
+    .pxl_cen    ( pxl48_cen ),
     .bus_dtackn ( bus_dtackn),
     .fix_cs     ( vmem_cs   ),
     .dsn        ( ram_dsn   ),
@@ -283,11 +294,7 @@ jtframe_68kdtack_cen #(.W(6),.RECOVERY(1)) u_bus_dtack(
     .ASn        ( ASn       ),
     .DSn        ({UDSn,LDSn}),
     .num        ( 5'd1      ),  // numerator
-`ifdef JTFRAME_SDRAM96
-    .den        ( 6'd6      ),  // denominator, 6 (16MHz)
-`else
-    .den        ( 6'd3      ),  // denominator, 3 (16MHz)
-`endif
+    .den        ( 6'd3      ),  // denominator, 3 (48/3=16MHz)
     .DTACKn     ( bus_dtackn),
     .wait2      ( 1'b0      ),
     .wait3      ( 1'b0      ),
@@ -338,7 +345,8 @@ jtframe_m68k u_cpu(
         vmem_we   = 0, cpu_dout = 0, ccu_cs = 0, cpal_we = 0,
         ram_we    = 0, psreg_cs = 0,
         cpu_rnw   = 1,
-        main_addr = 0,
+        cpu_addr  = 0,
+        rom_addr  = 0,
         ram_dsn   = 0, objrm_cs = 0, sdon = 0, objrg_cs=0, objcha_n=1,
         st_dout   = 0, lmem_we = 0, pmem01_we = 0, pmem_addr = 0,
         nv_addr   = 0, nv_din  = 0, nv_we = 0, pmem2_we = 0, pair_we=0;
