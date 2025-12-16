@@ -75,7 +75,7 @@ module jtframe_ioctl_dump #(parameter
     input             ioctl_ram,
     input             ioctl_wr,
     input      [ 7:0] ioctl_aux, ioctl_dout,
-    output     [ 7:0] ioctl_din
+    output reg [ 7:0] ioctl_din
 );
 
 `ifdef SIMULATION
@@ -89,6 +89,7 @@ initial begin // assertions
 end
 `endif
 
+reg  [ 1:0] we0_io, we1_io, we2_io, we3_io, we4_io, we5_io;
 reg  [ 5:0] sel;
 reg  [23:0] part_addr, ioctl_adl;
 reg  [23:0] offset;
@@ -105,21 +106,32 @@ assign addr3_mx = ioctl_ram ?  part_addr[(AW3!=0?AW3-1:0):(AW3!=0?DW3>>4:0)] : a
 assign addr4_mx = ioctl_ram ?  part_addr[(AW4!=0?AW4-1:0):(AW4!=0?DW4>>4:0)] : addr4;
 assign addr5_mx = ioctl_ram ?  part_addr[(AW5!=0?AW5-1:0):(AW5!=0?DW5>>4:0)] : addr5;
 
-assign ioctl_din =
-    sel[0] ? ( (DW0==16 && ioctl_addr[0]) ? dout0[DW0-1 -:8] : dout0[7:0]) :
-    sel[1] ? ( (DW1==16 && ioctl_addr[0]) ? dout1[DW1-1 -:8] : dout1[7:0]) :
-    sel[2] ? ( (DW2==16 && ioctl_addr[0]) ? dout2[DW2-1 -:8] : dout2[7:0]) :
-    sel[3] ? ( (DW3==16 && ioctl_addr[0]) ? dout3[DW3-1 -:8] : dout3[7:0]) :
-    sel[4] ? ( (DW4==16 && ioctl_addr[0]) ? dout4[DW4-1 -:8] : dout4[7:0]) :
-    sel[5] ? ( (DW5==16 && ioctl_addr[0]) ? dout5[DW5-1 -:8] : dout5[7:0]) :
-               ioctl_aux;
+assign we0_mx   = ioctl_ram ?  we0_io : we0;
+assign we1_mx   = ioctl_ram ?  we1_io : we1;
+assign we2_mx   = ioctl_ram ?  we2_io : we2;
+assign we3_mx   = ioctl_ram ?  we3_io : we3;
+assign we4_mx   = ioctl_ram ?  we4_io : we4;
+assign we5_mx   = ioctl_ram ?  we5_io : we5;
 
-assign we0_mx = ioctl_ram ? {2{ioctl_wr & sel[0]}} & { ioctl_addr[0], ~ioctl_addr[0] || DW0==8 } : we0;
-assign we1_mx = ioctl_ram ? {2{ioctl_wr & sel[1]}} & { ioctl_addr[0], ~ioctl_addr[0] || DW1==8 } : we1;
-assign we2_mx = ioctl_ram ? {2{ioctl_wr & sel[2]}} & { ioctl_addr[0], ~ioctl_addr[0] || DW2==8 } : we2;
-assign we3_mx = ioctl_ram ? {2{ioctl_wr & sel[3]}} & { ioctl_addr[0], ~ioctl_addr[0] || DW3==8 } : we3;
-assign we4_mx = ioctl_ram ? {2{ioctl_wr & sel[4]}} & { ioctl_addr[0], ~ioctl_addr[0] || DW4==8 } : we4;
-assign we5_mx = ioctl_ram ? {2{ioctl_wr & sel[5]}} & { ioctl_addr[0], ~ioctl_addr[0] || DW5==8 } : we5;
+always @(posedge clk)  begin
+    we0_io <= 0;       we1_io <= 0;       we2_io <= 0;
+    we3_io <= 0;       we4_io <= 0;       we5_io <= 0;
+    ioctl_din <= sel[0] ? ( (DW0==16 && ioctl_addr[0]) ? dout0[DW0-1 -:8] : dout0[7:0]) :
+                 sel[1] ? ( (DW1==16 && ioctl_addr[0]) ? dout1[DW1-1 -:8] : dout1[7:0]) :
+                 sel[2] ? ( (DW2==16 && ioctl_addr[0]) ? dout2[DW2-1 -:8] : dout2[7:0]) :
+                 sel[3] ? ( (DW3==16 && ioctl_addr[0]) ? dout3[DW3-1 -:8] : dout3[7:0]) :
+                 sel[4] ? ( (DW4==16 && ioctl_addr[0]) ? dout4[DW4-1 -:8] : dout4[7:0]) :
+                 sel[5] ? ( (DW5==16 && ioctl_addr[0]) ? dout5[DW5-1 -:8] : dout5[7:0]) :
+                 ioctl_aux;
+    if(ioctl_ram && ioctl_wr) begin
+        if(sel[0]) we0_io <= { ioctl_addr[0], ~ioctl_addr[0] || DW0==8 };
+        if(sel[1]) we1_io <= { ioctl_addr[0], ~ioctl_addr[0] || DW1==8 };
+        if(sel[2]) we2_io <= { ioctl_addr[0], ~ioctl_addr[0] || DW2==8 };
+        if(sel[3]) we3_io <= { ioctl_addr[0], ~ioctl_addr[0] || DW3==8 };
+        if(sel[4]) we4_io <= { ioctl_addr[0], ~ioctl_addr[0] || DW4==8 };
+        if(sel[5]) we5_io <= { ioctl_addr[0], ~ioctl_addr[0] || DW5==8 };
+    end
+end
 
 assign din0_mx = ioctl_ram ? {DW0==16?2:1{ioctl_dout}} : din0;
 assign din1_mx = ioctl_ram ? {DW1==16?2:1{ioctl_dout}} : din1;
